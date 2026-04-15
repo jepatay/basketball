@@ -1,25 +1,62 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { savePlayerAvatar, addPlayer } from '../firebase/api';
+import { savePlayerAvatar, addPlayer, loadPlayers } from '../firebase/api';
 import { ALL_TAGS } from '../data/players';
 import { resizeBase64Image } from '../utils/imageUtils';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
+async function generateAndSave(playerName, playerId) {
+  const res = await fetch(`${API_BASE}/api/generate-avatar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playerName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const { imageBase64: rawBase64 } = await res.json();
+  const imageBase64 = await resizeBase64Image(rawBase64, 300, 0.82);
+  await savePlayerAvatar(playerId, imageBase64);
+  return imageBase64;
+}
+
 export default function Admin() {
   const navigate = useNavigate();
 
-  const [name, setName] = useState('');
-  const [ftPct, setFtPct] = useState(80);
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [status, setStatus] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [previewSrc, setPreviewSrc] = useState(null);
-
-  // For regenerating avatar on an existing player
-  const [regen, setRegen] = useState(false);
+  // ── Single player ────────────────────────────────────────────────────────
+  const [name, setName]                     = useState('');
+  const [ftPct, setFtPct]                   = useState(80);
+  const [selectedTags, setSelectedTags]     = useState([]);
+  const [status, setStatus]                 = useState('');
+  const [loading, setLoading]               = useState(false);
+  const [previewSrc, setPreviewSrc]         = useState(null);
+  const [regen, setRegen]                   = useState(false);
   const [existingPlayerId, setExistingPlayerId] = useState('');
 
+  // ── Bulk generation ──────────────────────────────────────────────────────
+  const [bulkPlayers, setBulkPlayers]       = useState([]);       // all players from Firestore
+  const [bulkLoading, setBulkLoading]       = useState(false);    // loading the list
+  const [bulkRunning, setBulkRunning]       = useState(false);
+  const [bulkDone, setBulkDone]             = useState(0);
+  const [bulkTotal, setBulkTotal]           = useState(0);
+  const [bulkCurrent, setBulkCurrent]       = useState('');
+  const [bulkLog, setBulkLog]               = useState([]);        // [{name, ok, err}]
+  const cancelRef                           = useRef(false);
+
+  useEffect(() => {
+    setBulkLoading(true);
+    loadPlayers()
+      .then((ps) => setBulkPlayers(ps))
+      .catch(() => {})
+      .finally(() => setBulkLoading(false));
+  }, []);
+
+  const missingCount  = bulkPlayers.filter((p) => !p.avatarBase64).length;
+  const hasAvatarCount = bulkPlayers.length - missingCount;
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
   const slugify = (n) =>
     n.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -28,6 +65,7 @@ export default function Admin() {
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
 
+  // ── Single player handler ────────────────────────────────────────────────
   const handleGenerate = async () => {
     if (!name.trim()) { setStatus('⚠ Please enter a player name'); return; }
     setLoading(true);
@@ -39,47 +77,75 @@ export default function Admin() {
       : slugify(name);
 
     try {
-      // Server calls DALL-E 3, returns raw PNG base64
-      const res = await fetch(`${API_BASE}/api/generate-avatar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: name.trim() }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
-      const { imageBase64: rawBase64 } = await res.json();
-
-      // Resize to 300×300 JPEG client-side via Canvas (~40-60 KB for Firestore)
       setStatus('Resizing image…');
-      const imageBase64 = await resizeBase64Image(rawBase64, 300, 0.82);
+      const imageBase64 = await generateAndSave(name.trim(), playerId);
       setPreviewSrc(`data:image/jpeg;base64,${imageBase64}`);
 
-      setStatus('Saving to Firestore…');
-
-      if (regen) {
-        await savePlayerAvatar(playerId, imageBase64);
-        setStatus(`✅ Avatar updated for "${playerId}"!`);
-      } else {
+      if (!regen) {
         const era = selectedTags.includes('nextgen') ? 'nextgen'
           : selectedTags.includes('modern') ? 'modern' : 'legends';
         await addPlayer(playerId, {
-          name: name.trim(),
-          ftPct: Number(ftPct),
-          era,
-          tags: selectedTags,
+          name: name.trim(), ftPct: Number(ftPct), era, tags: selectedTags,
         }, imageBase64);
         setStatus(`✅ Player "${name.trim()}" added!`);
+      } else {
+        setStatus(`✅ Avatar updated for "${playerId}"!`);
       }
+
+      // Refresh bulk list so counts update
+      loadPlayers().then(setBulkPlayers).catch(() => {});
     } catch (err) {
       setStatus(`❌ Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
+
+  // ── Bulk handler ─────────────────────────────────────────────────────────
+  const handleBulkGenerate = async (onlyMissing = true) => {
+    const queue = onlyMissing
+      ? bulkPlayers.filter((p) => !p.avatarBase64)
+      : [...bulkPlayers];
+
+    if (queue.length === 0) return;
+
+    cancelRef.current = false;
+    setBulkRunning(true);
+    setBulkDone(0);
+    setBulkTotal(queue.length);
+    setBulkLog([]);
+    setBulkCurrent('');
+
+    let done = 0;
+    for (const player of queue) {
+      if (cancelRef.current) {
+        setBulkCurrent('Cancelled.');
+        break;
+      }
+
+      setBulkCurrent(`Generating ${player.name}…`);
+      try {
+        await generateAndSave(player.name, player.id);
+        done++;
+        setBulkDone(done);
+        setBulkLog((prev) => [{ name: player.name, ok: true }, ...prev]);
+        // Refresh player list so the count reflects new avatars
+        loadPlayers().then(setBulkPlayers).catch(() => {});
+      } catch (err) {
+        done++;
+        setBulkDone(done);
+        setBulkLog((prev) => [{ name: player.name, ok: false, err: err.message }, ...prev]);
+      }
+
+      // Small delay between calls to avoid rate limiting
+      if (!cancelRef.current) await new Promise((r) => setTimeout(r, 800));
+    }
+
+    setBulkCurrent('');
+    setBulkRunning(false);
+  };
+
+  const pct = bulkTotal > 0 ? Math.round((bulkDone / bulkTotal) * 100) : 0;
 
   return (
     <div className="page page--admin">
@@ -88,9 +154,86 @@ export default function Admin() {
         <h1 className="page__title">⚙ Admin Panel</h1>
       </div>
 
+      {/* ── Bulk generation ── */}
       <div className="admin-card">
         <div className="admin-section">
-          <h2 className="admin-section__title">Add / Update Player</h2>
+          <h2 className="admin-section__title">Generate All Avatars</h2>
+
+          {bulkLoading ? (
+            <div className="admin-status">Loading players…</div>
+          ) : (
+            <div className="admin-bulk-info">
+              <span className="admin-bulk-stat admin-bulk-stat--ok">
+                ✅ {hasAvatarCount} / {bulkPlayers.length} have avatars
+              </span>
+              {missingCount > 0 && (
+                <span className="admin-bulk-stat admin-bulk-stat--missing">
+                  ⚠ {missingCount} missing
+                </span>
+              )}
+            </div>
+          )}
+
+          {bulkRunning && (
+            <>
+              <div className="admin-progress-bar">
+                <div className="admin-progress-bar__fill" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="admin-progress-label">
+                {bulkCurrent || `${bulkDone} / ${bulkTotal} done`}
+              </div>
+            </>
+          )}
+
+          {bulkLog.length > 0 && (
+            <div className="admin-log">
+              {bulkLog.slice(0, 8).map((entry, i) => (
+                <div key={i} className={`admin-log__entry ${entry.ok ? 'admin-log__entry--ok' : 'admin-log__entry--err'}`}>
+                  {entry.ok ? '✅' : '❌'} {entry.name}
+                  {!entry.ok && <span className="admin-log__err"> — {entry.err}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="admin-bulk-actions">
+            {!bulkRunning ? (
+              <>
+                <button
+                  className="btn btn--primary"
+                  onClick={() => handleBulkGenerate(true)}
+                  disabled={bulkLoading || missingCount === 0}
+                >
+                  🎨 Generate {missingCount} Missing
+                </button>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => handleBulkGenerate(false)}
+                  disabled={bulkLoading || bulkPlayers.length === 0}
+                >
+                  ↺ Regenerate All {bulkPlayers.length}
+                </button>
+              </>
+            ) : (
+              <button
+                className="btn btn--ghost"
+                onClick={() => { cancelRef.current = true; }}
+              >
+                ⏹ Stop
+              </button>
+            )}
+          </div>
+
+          <p className="admin-bulk-note">
+            Each avatar costs ~$0.04 (DALL-E 3). {missingCount} missing = ~${(missingCount * 0.04).toFixed(2)}.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Single player ── */}
+      <div className="admin-card">
+        <div className="admin-section">
+          <h2 className="admin-section__title">Add / Update Single Player</h2>
 
           <div className="setup-row">
             <label className="setup-label">Mode</label>
