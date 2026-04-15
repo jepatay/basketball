@@ -10,22 +10,21 @@ import {
   limit,
   serverTimestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, getMetadata } from 'firebase/storage';
-import { db, storage } from './config';
+import { db } from './config';
 import PLAYERS from '../data/players';
 
 // ── Players ──────────────────────────────────────────────────────────────────
 
 export async function seedPlayersIfNeeded() {
   const snap = await getDocs(collection(db, 'players'));
-  if (!snap.empty) return; // already seeded
+  if (!snap.empty) return;
   const writes = PLAYERS.map((p) =>
     setDoc(doc(db, 'players', p.id), {
       name: p.name,
       ftPct: p.ftPct,
       era: p.era,
       tags: p.tags,
-      avatarUrl: p.avatarUrl || null,
+      avatarBase64: null,  // stored here instead of Firebase Storage
     })
   );
   await Promise.all(writes);
@@ -36,31 +35,17 @@ export async function loadPlayers() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export async function updatePlayerAvatarUrl(playerId, avatarUrl) {
-  await updateDoc(doc(db, 'players', playerId), { avatarUrl });
+/** Save base64 avatar string directly in the Firestore player document */
+export async function savePlayerAvatar(playerId, base64Image) {
+  await updateDoc(doc(db, 'players', playerId), { avatarBase64: base64Image });
 }
 
-// ── Avatars (Storage) ─────────────────────────────────────────────────────────
-
-export async function getAvatarFromStorage(playerSlug) {
-  try {
-    const storageRef = ref(storage, `avatars/${playerSlug}.png`);
-    await getMetadata(storageRef); // throws if not found
-    return await getDownloadURL(storageRef);
-  } catch {
-    return null;
-  }
-}
-
-export async function uploadAvatarToStorage(playerSlug, base64Image) {
-  const byteString = atob(base64Image);
-  const ab = new ArrayBuffer(byteString.length);
-  const ia = new Uint8Array(ab);
-  for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-  const blob = new Blob([ab], { type: 'image/png' });
-  const storageRef = ref(storage, `avatars/${playerSlug}.png`);
-  await uploadBytes(storageRef, blob);
-  return await getDownloadURL(storageRef);
+/** Add a brand-new player document (from Admin panel) */
+export async function addPlayer(playerId, playerData, base64Image) {
+  await setDoc(doc(db, 'players', playerId), {
+    ...playerData,
+    avatarBase64: base64Image || null,
+  });
 }
 
 // ── Scores / Personal Bests ──────────────────────────────────────────────────
@@ -77,7 +62,7 @@ export async function savePersonalBest(username, playerId, score, totalShots) {
       playerId,
       updatedAt: serverTimestamp(),
     });
-    return true; // new personal best
+    return true;
   }
   return false;
 }

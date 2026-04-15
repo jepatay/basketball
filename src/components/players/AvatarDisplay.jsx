@@ -1,64 +1,37 @@
-import { useState, useEffect } from 'react';
-import { getAvatarFromStorage } from '../../firebase/api';
-
-const avatarCache = {}; // local in-memory cache: playerId → url
-
-/** Displays a player's avatar (loads from Firebase Storage or shows placeholder) */
+/** Displays a player's avatar.
+ *  Avatar is stored as a base64 JPEG string in the Firestore player doc
+ *  (avatarBase64 field). No Firebase Storage required.
+ */
 export default function AvatarDisplay({ player, size = 'md' }) {
-  const [url, setUrl] = useState(player?.avatarUrl || null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!player) return;
-
-    // 1. Already have a URL
-    if (player.avatarUrl) {
-      setUrl(player.avatarUrl);
-      return;
-    }
-
-    // 2. Check in-memory cache
-    if (avatarCache[player.id]) {
-      setUrl(avatarCache[player.id]);
-      return;
-    }
-
-    // 3. Check Firebase Storage
-    setLoading(true);
-    getAvatarFromStorage(player.id)
-      .then((storageUrl) => {
-        if (storageUrl) {
-          avatarCache[player.id] = storageUrl;
-          setUrl(storageUrl);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [player?.id, player?.avatarUrl]);
-
   const sizeClass = `avatar--${size}`;
+
   const initials = player?.name
     ? player.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
     : '?';
 
-  if (loading) {
-    return (
-      <div className={`avatar avatar--loading ${sizeClass}`}>
-        <div className="avatar__spinner" />
-      </div>
-    );
-  }
+  // base64 image stored directly in Firestore
+  const src = player?.avatarBase64
+    ? `data:image/jpeg;base64,${player.avatarBase64}`
+    : null;
 
-  if (url) {
+  if (src) {
     return (
       <div className={`avatar ${sizeClass}`}>
-        <img src={url} alt={player?.name} className="avatar__img" />
+        <img src={src} alt={player?.name} className="avatar__img" />
       </div>
     );
   }
 
-  // Placeholder with initials
+  // Placeholder with initials + a color derived from player name
+  const hue = player?.name
+    ? [...player.name].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360
+    : 0;
+
   return (
-    <div className={`avatar avatar--placeholder ${sizeClass}`}>
+    <div
+      className={`avatar avatar--placeholder ${sizeClass}`}
+      style={{ '--avatar-hue': hue }}
+    >
       <span className="avatar__initials">{initials}</span>
     </div>
   );

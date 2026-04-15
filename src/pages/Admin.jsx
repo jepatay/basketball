@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { uploadAvatarToStorage, updatePlayerAvatarUrl } from '../firebase/api';
-import { db } from '../firebase/config';
-import { doc, setDoc } from 'firebase/firestore';
+import { savePlayerAvatar, addPlayer, loadPlayers } from '../firebase/api';
 import { ALL_TAGS } from '../data/players';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
@@ -15,11 +13,11 @@ export default function Admin() {
   const [selectedTags, setSelectedTags] = useState([]);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewSrc, setPreviewSrc] = useState(null);
 
-  // For avatar URL for existing player
-  const [existingPlayerId, setExistingPlayerId] = useState('');
+  // For regenerating avatar on an existing player
   const [regen, setRegen] = useState(false);
+  const [existingPlayerId, setExistingPlayerId] = useState('');
 
   const slugify = (n) =>
     n.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -33,11 +31,14 @@ export default function Admin() {
     if (!name.trim()) { setStatus('⚠ Please enter a player name'); return; }
     setLoading(true);
     setStatus('Calling DALL-E 3…');
-    setPreviewUrl(null);
+    setPreviewSrc(null);
 
-    const playerId = existingPlayerId.trim() || slugify(name);
+    const playerId = regen
+      ? existingPlayerId.trim() || slugify(name)
+      : slugify(name);
 
     try {
+      // Server resizes the image to 300×300 JPEG and returns base64
       const res = await fetch(`${API_BASE}/api/generate-avatar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -50,25 +51,23 @@ export default function Admin() {
       }
 
       const { imageBase64 } = await res.json();
-      setStatus('Uploading to Firebase Storage…');
+      setPreviewSrc(`data:image/jpeg;base64,${imageBase64}`);
 
-      const url = await uploadAvatarToStorage(playerId, imageBase64);
-      setPreviewUrl(url);
+      setStatus('Saving to Firestore…');
 
-      // If adding a brand-new player, save to Firestore too
-      if (!regen) {
-        await setDoc(doc(db, 'players', playerId), {
+      if (regen) {
+        await savePlayerAvatar(playerId, imageBase64);
+        setStatus(`✅ Avatar updated for "${playerId}"!`);
+      } else {
+        const era = selectedTags.includes('nextgen') ? 'nextgen'
+          : selectedTags.includes('modern') ? 'modern' : 'legends';
+        await addPlayer(playerId, {
           name: name.trim(),
           ftPct: Number(ftPct),
-          era: selectedTags.includes('nextgen') ? 'nextgen'
-            : selectedTags.includes('modern') ? 'modern' : 'legends',
+          era,
           tags: selectedTags,
-          avatarUrl: url,
-        });
-        setStatus(`✅ Player "${name.trim()}" added with avatar!`);
-      } else {
-        await updatePlayerAvatarUrl(playerId, url);
-        setStatus(`✅ Avatar updated for player "${playerId}"!`);
+        }, imageBase64);
+        setStatus(`✅ Player "${name.trim()}" added!`);
       }
     } catch (err) {
       setStatus(`❌ Error: ${err.message}`);
@@ -129,13 +128,10 @@ export default function Admin() {
           {!regen && (
             <>
               <div className="setup-row">
-                <label className="setup-label">Career FT% (0–100)</label>
+                <label className="setup-label">Career FT%</label>
                 <div className="admin-ft-row">
                   <input
-                    type="range"
-                    min={40}
-                    max={100}
-                    value={ftPct}
+                    type="range" min={40} max={100} value={ftPct}
                     onChange={(e) => setFtPct(Number(e.target.value))}
                     className="admin-slider"
                   />
@@ -164,9 +160,9 @@ export default function Admin() {
             </div>
           )}
 
-          {previewUrl && (
+          {previewSrc && (
             <div className="admin-preview">
-              <img src={previewUrl} alt="Generated avatar" className="admin-preview__img" />
+              <img src={previewSrc} alt="Generated avatar" className="admin-preview__img" />
             </div>
           )}
 
