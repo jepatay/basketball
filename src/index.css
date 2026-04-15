@@ -179,6 +179,7 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
 .btn--tournament  { border-left: 5px solid var(--gold); }
 .btn--century     { border-left: 5px solid var(--teal); }
 .btn--quickmatch  { border-left: 5px solid var(--red); }
+.btn--threepoint  { border-left: 5px solid #AA44FF; }
 
 .btn__icon { font-size: 2rem; line-height: 1; }
 .btn__text { font-size: 1.3rem; color: var(--orange); }
@@ -444,6 +445,27 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
 .game-engine__h-badge--perfect { color: var(--gold); background: rgba(255,215,0,0.15); }
 .game-engine__h-badge--good    { color: var(--teal); background: rgba(0,229,204,0.1); }
 .game-engine__h-badge--miss    { color: var(--red);  background: rgba(255,51,82,0.1); }
+
+/* 3-point hoop layout */
+.game-engine__hoop-wrap { align-items: center; }
+.game-engine__hoop-row  { display: flex; align-items: center; gap: 16px; justify-content: center; }
+
+/* HoopAimer */
+.hoop-aimer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.hoop-aimer--active svg { filter: drop-shadow(0 0 12px rgba(255,107,0,0.5)); }
+.hoop-aimer__label {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+}
 
 /* Basketball button — big tappable ball at the bottom */
 .game-engine__bottom {

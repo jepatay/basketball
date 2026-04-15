@@ -1,113 +1,126 @@
 /**
  * Game mechanics for Free Throw Legends.
- *
- * Core design:
- *   Bad shooter (Shaq 52%)  → FAST bar + narrow zone → hard to score
- *   Good shooter (Curry 91%) → SLOW bar + wider zone  → easier to score
- *
- * Make zone is intentionally narrow — you must stop near the center.
- * Being far from center = MISS, regardless of player.
  */
 
 /**
  * Difficulty levels.
- * speedMult > 1 → slower bar (easier); < 1 → faster bar (harder)
- * zoneMult  > 1 → wider zone (easier); < 1 → narrower zone (harder)
  *
- * Pro = current baseline (multipliers of 1.0).
+ * speedMult: multiplier on bar period (1.0 = Rookie baseline; 0.6^n = each step 40% faster)
+ * zoneMult:  multiplier on make-zone radius (Rookie=full, Legend=40%)
+ * cpuSpread: extra sigma spread for CPU shots (1.0 = realistic; >1 = CPU misses more)
+ *
+ * Zone widths relative to Rookie:
+ *   Rookie 2 units → Pro 1.5 → All-Star 1.2 → Legend 0.8
  */
 export const DIFFICULTIES = [
-  { id: 'rookie',  label: 'Rookie',   speedMult: 1.5,  zoneMult: 1.3  },
-  { id: 'pro',     label: 'Pro',       speedMult: 1.0,  zoneMult: 1.0  },
-  { id: 'allstar', label: 'All-Star',  speedMult: 0.75, zoneMult: 0.85 },
-  { id: 'legend',  label: 'Legend',    speedMult: 0.55, zoneMult: 0.7  },
+  { id: 'rookie',  label: 'Rookie',   speedMult: 1.0,   zoneMult: 1.0,  cpuSpread: 0.85 },
+  { id: 'pro',     label: 'Pro',       speedMult: 0.6,   zoneMult: 0.75, cpuSpread: 1.0  },
+  { id: 'allstar', label: 'All-Star',  speedMult: 0.36,  zoneMult: 0.60, cpuSpread: 1.15 },
+  { id: 'legend',  label: 'Legend',    speedMult: 0.216, zoneMult: 0.40, cpuSpread: 1.30 },
 ];
 
 export function getDifficulty(id) {
-  return DIFFICULTIES.find((d) => d.id === id) ?? DIFFICULTIES[1];
+  return DIFFICULTIES.find((d) => d.id === id) ?? DIFFICULTIES[0];
 }
 
 /**
- * Bar oscillation period in ms (one full sweep 0→100→0).
- * INVERSE of FT%: worse shooter = faster, scarier bar.
- * speedMult scales the period (1.5 = 50% slower, 0.55 = 45% faster).
- *
- * At Pro (1.0x): Shaq 52% → 650ms, Curry 91% → 2200ms
+ * Bar oscillation period in ms. Bad shooters get faster bars.
+ * speedMult < 1 = faster (harder).
+ * Floor of 450ms keeps Legend playable on mobile.
  */
 export function getBarPeriodMs(ftPct, speedMult = 1.0) {
   const minPeriod = 650;
   const maxPeriod = 2200;
   const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
-  return Math.round((minPeriod + t * (maxPeriod - minPeriod)) * speedMult);
+  const raw = (minPeriod + t * (maxPeriod - minPeriod)) * speedMult;
+  return Math.round(Math.max(raw, 450));
 }
 
 /**
- * Zone radii on the 0–100 bar scale (center = 50).
- * zoneMult scales both zones (1.3 = 30% wider, 0.7 = 30% narrower).
+ * Zone radii on 0–100 bar scale (center = 50).
  */
 export function getZoneRadii(ftPct, zoneMult = 1.0) {
   const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
   const makeRadius    = (9 + t * 8) * zoneMult;
-  const perfectRadius = 3.5 * Math.max(0.75, zoneMult);
+  const perfectRadius = Math.max(2.5, 3.5 * zoneMult);
   return { makeRadius, perfectRadius };
 }
 
 /**
- * Current bar position (0–100) given elapsed ms and period.
- * Triangle wave: 0 → 100 in first half, 100 → 0 in second half.
+ * Triangle-wave position 0–100 for elapsed time.
  */
 export function getBarPosition(elapsedMs, periodMs) {
   const t = (elapsedMs % periodMs) / periodMs;
-  const triangle = t < 0.5 ? t * 2 : (1 - t) * 2;
-  return triangle * 100;
+  return (t < 0.5 ? t * 2 : (1 - t) * 2) * 100;
 }
 
 /**
- * Calculate shot result from stop positions.
- * @param {number} hStop  0–100
- * @param {number} vStop  0–100
- * @param {number} ftPct  0–100
+ * Free-throw shot result from H and V stop positions.
  */
 export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0) {
   const hDev = Math.abs(hStop - 50);
   const vDev = Math.abs(vStop - 50);
   const { makeRadius, perfectRadius } = getZoneRadii(ftPct, zoneMult);
 
-  const hInZone = hDev <= makeRadius;
-  const vInZone = vDev <= makeRadius;
-  const hPerfect = hDev <= perfectRadius;
-  const vPerfect = vDev <= perfectRadius;
-
   let result;
-  if (hPerfect && vPerfect) {
-    result = 'perfect';
-  } else if (hInZone && vInZone) {
-    result = 'good';
-  } else {
-    result = 'miss';
-  }
+  if (hDev <= perfectRadius && vDev <= perfectRadius) result = 'perfect';
+  else if (hDev <= makeRadius && vDev <= makeRadius) result = 'good';
+  else result = 'miss';
 
   return { result, hDev, vDev, madeShot: result !== 'miss' };
 }
 
 /**
- * CPU shot simulation.
- * CPU "aims" near the center but with realistic variance based on FT%.
- * Better FT% = tighter grouping around center.
+ * 3-pointer result from H, V, and radial (R) stop positions.
+ * R = 0 → center (perfect), R = 100 → rim (miss).
  */
-export function simulateCpuShot(ftPct, zoneMult = 1.0) {
+export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0) {
+  const hDev = Math.abs(hStop - 50);
+  const vDev = Math.abs(vStop - 50);
+  // Radial: 0 is best, 100 is worst
+  const rDev = rStop;
+
+  const makeHV    = 14 * zoneMult;   // H/V zone (fixed, not player-scaled)
+  const perfectHV = 5  * zoneMult;
+  const makeR     = 28 * zoneMult;   // radial zone
+  const perfectR  = 10 * zoneMult;
+
+  let result;
+  if (hDev <= perfectHV && vDev <= perfectHV && rDev <= perfectR) result = 'perfect';
+  else if (hDev <= makeHV && vDev <= makeHV && rDev <= makeR)     result = 'good';
+  else result = 'miss';
+
+  return { result, hDev, vDev, rDev, madeShot: result !== 'miss' };
+}
+
+/**
+ * CPU shot simulation.
+ *
+ * Calibrated so make rate ≈ player's real ftPct at cpuSpread=1.0.
+ *
+ * The key fix over previous version: the Box-Muller sum of 4 uniforms has
+ * std-dev 0.577, not 1.0.  sigma is divided by 0.577 to give the correct
+ * actual standard deviation.
+ *
+ *   sigma_target = makeRadius * (0.93 − t × 0.47)
+ *   sigma_param  = sigma_target / 0.577  = makeRadius * (1.61 − t × 0.81)
+ *
+ * cpuSpread > 1 makes the CPU less accurate (harder difficulty).
+ */
+export function simulateCpuShot(ftPct, zoneMult = 1.0, cpuSpread = 1.0) {
   const { makeRadius } = getZoneRadii(ftPct, zoneMult);
-  // Use a normal-ish distribution: most stops near center, some outliers
+  const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
+  const sigma = makeRadius * (1.61 - t * 0.81) * cpuSpread;
+
   const sampleDev = () => {
-    // Box-Muller approximation with capped sigma
-    const sigma = makeRadius * 0.85; // aim inside zone most of the time
     let s = 0;
     for (let i = 0; i < 4; i++) s += Math.random() - 0.5;
     return s * sigma;
   };
-  const hStop = Math.min(99, Math.max(1, 50 + sampleDev()));
-  const vStop = Math.min(99, Math.max(1, 50 + sampleDev()));
-  return { hStop, vStop };
+  return {
+    hStop: Math.min(99, Math.max(1, 50 + sampleDev())),
+    vStop: Math.min(99, Math.max(1, 50 + sampleDev())),
+  };
 }
 
 /** Fisher-Yates shuffle */

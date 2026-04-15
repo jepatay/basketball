@@ -60,6 +60,12 @@ export default function Home() {
           <span className="btn__text">1v1 QUICK MATCH</span>
           <span className="btn__sub">Two players, same device</span>
         </button>
+
+        <button className="btn btn--mode btn--threepoint" onClick={() => go('/threepoint')}>
+          <span className="btn__icon">🎳</span>
+          <span className="btn__text">3-POINT CONTEST</span>
+          <span className="btn__sub">3 dimensions — arc, left/right, depth</span>
+        </button>
       </div>
 
       {/* Footer links */}

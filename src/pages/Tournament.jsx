@@ -6,6 +6,7 @@ import GameEngine from '../components/game/GameEngine';
 import { loadPlayers, seedPlayersIfNeeded, saveTournamentResult } from '../firebase/api';
 import { generateBracket, advanceWinner, getNextHumanMatch, getNextCpuMatch, isTournamentComplete, getChampion, getRoundName } from '../utils/bracketUtils';
 import { simulateCpuShot, calculateShotResult, DIFFICULTIES, getDifficulty } from '../utils/gameUtils';
+
 import PLAYERS from '../data/players';
 
 const BRACKET_SIZES = [8, 16, 32];
@@ -72,22 +73,22 @@ export default function Tournament() {
 
   // Simulate all CPU-only matches quickly
   const simulateCpuMatches = useCallback((currentBracket) => {
-    const { zoneMult } = getDifficulty(difficulty);
+    const { zoneMult, cpuSpread } = getDifficulty(difficulty);
     let b = currentBracket;
     let cpuMatch = getNextCpuMatch(b, [humanPlayer1?.id, humanPlayer2?.id].filter(Boolean));
     while (cpuMatch) {
       const { roundIdx, matchIdx, match } = cpuMatch;
       let score1 = 0, score2 = 0;
       for (let i = 0; i < matchLength; i++) {
-        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult);
+        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult, cpuSpread);
         if (calculateShotResult(h1, v1, match.player1.ftPct, zoneMult).madeShot) score1++;
-        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult);
+        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult, cpuSpread);
         if (calculateShotResult(h2, v2, match.player2.ftPct, zoneMult).madeShot) score2++;
       }
       // Tiebreaker
       while (score1 === score2) {
-        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult);
-        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult);
+        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult, cpuSpread);
+        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult, cpuSpread);
         const m1 = calculateShotResult(h1, v1, match.player1.ftPct, zoneMult).madeShot;
         const m2 = calculateShotResult(h2, v2, match.player2.ftPct, zoneMult).madeShot;
         if (m1 && !m2) score1++;
@@ -144,8 +145,8 @@ export default function Tournament() {
     const simulated = simulateCpuMatches(updated);
     setBracket(simulated);
     setCurrentMatch(null);
+    // Return to bracket view so the player can see results before next game
     setStep('bracket-view');
-    setTimeout(() => advanceToNextHumanMatch(simulated), 100);
   }, [currentMatch, bracket, simulateCpuMatches]);
 
   // ── Render ─────────────────────────────────────────────────────────────────

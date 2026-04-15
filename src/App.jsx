@@ -3,6 +3,7 @@ import Home from './pages/Home';
 import Tournament from './pages/Tournament';
 import CenturyChallenge from './pages/CenturyChallenge';
 import QuickMatch from './pages/QuickMatch';
+import ThreePointContest from './pages/ThreePointContest';
 import Admin from './pages/Admin';
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/tournament" element={<Tournament />} />
         <Route path="/century" element={<CenturyChallenge />} />
         <Route path="/quickmatch" element={<QuickMatch />} />
+        <Route path="/threepoint" element={<ThreePointContest />} />
         <Route path="/admin" element={<Admin />} />
       </Routes>
     </BrowserRouter>

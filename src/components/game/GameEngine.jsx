@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useGame } from '../../hooks/useGame';
 import TimingBar from './TimingBar';
+import HoopAimer from './HoopAimer';
 import ShotResult from './ShotResult';
 import Scoreboard from './Scoreboard';
 import AvatarDisplay from '../players/AvatarDisplay';
@@ -8,23 +9,23 @@ import CourtBackground from './CourtBackground';
 import { resumeAudio } from '../../utils/audioUtils';
 import { getZoneRadii } from '../../utils/gameUtils';
 
-export default function GameEngine({ players, totalShots, onComplete, onExit, difficulty = 'pro' }) {
-  const game = useGame({ players, totalShots, onComplete, difficulty });
+export default function GameEngine({ players, totalShots, onComplete, onExit, difficulty = 'rookie', isThreePoint = false }) {
+  const game = useGame({ players, totalShots, onComplete, difficulty, isThreePoint });
 
   const {
     phase, currentShotNum, currentPlayerIdx, currentPlayer,
-    hStop, vStop, lastResult, scores, shotHistory, suddenDeath, sdRound,
-    startShot, stopHBar, stopVBar, advanceToVBar, takeCpuShot, ftPct,
-    speedMult, zoneMult,
+    hStop, vStop, rStop, lastResult, scores, shotHistory, suddenDeath, sdRound,
+    startShot, stopHBar, stopVBar, stopHoopBar,
+    advanceToVBar, advanceToHoopBar,
+    takeCpuShot, ftPct, speedMult, zoneMult,
   } = game;
 
   const hBarRef    = useRef(null);
   const vBarRef    = useRef(null);
-  // Prevents the same physical tap from triggering two actions
-  // (e.g. startShot AND stopBar in the same gesture).
+  const hoopBarRef = useRef(null);
   const tapLockRef = useRef(false);
 
-  // ── CPU auto-shot ─────────────────────────────────────────────────────────
+  // ── CPU auto-shot ────────────────────────────────────────────────────────
   useEffect(() => {
     if (phase === 'ready' && currentPlayer && !currentPlayer.isHuman) {
       const t = setTimeout(() => takeCpuShot(), 700);
@@ -32,7 +33,7 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
     }
   }, [phase, currentPlayer, takeCpuShot]);
 
-  // ── Auto h_done → v_bar ───────────────────────────────────────────────────
+  // ── Auto h_done → v_bar ──────────────────────────────────────────────────
   useEffect(() => {
     if (phase === 'h_done') {
       const t = setTimeout(() => advanceToVBar(), 350);
@@ -40,14 +41,20 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
     }
   }, [phase, advanceToVBar]);
 
+  // ── Auto v_done → hoop_bar (3PT only) ───────────────────────────────────
+  useEffect(() => {
+    if (phase === 'v_done') {
+      const t = setTimeout(() => advanceToHoopBar(), 350);
+      return () => clearTimeout(t);
+    }
+  }, [phase, advanceToHoopBar]);
+
   if (phase === 'done') return null;
 
   const isHuman     = currentPlayer?.isHuman ?? true;
   const playerLabel = currentPlayer?.label || currentPlayer?.player?.name || 'Player';
 
-  // ── Single master tap handler ─────────────────────────────────────────────
-  // onPointerDown fires exactly ONCE per gesture (touch OR mouse),
-  // eliminating the onTouchStart + onClick double-fire problem.
+  // ── Single master tap handler ────────────────────────────────────────────
   const handlePointer = useCallback((e) => {
     e.preventDefault();
     resumeAudio();
@@ -55,17 +62,17 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
     if (!isHuman || tapLockRef.current) return;
 
     if (phase === 'ready') {
-      // Lock for 350 ms so the same gesture can't also stop the bar
       tapLockRef.current = true;
       setTimeout(() => { tapLockRef.current = false; }, 350);
       startShot();
       return;
     }
-    if (phase === 'h_bar') { hBarRef.current?.stop(); return; }
-    if (phase === 'v_bar') { vBarRef.current?.stop(); return; }
+    if (phase === 'h_bar')   { hBarRef.current?.stop();    return; }
+    if (phase === 'v_bar')   { vBarRef.current?.stop();    return; }
+    if (phase === 'hoop_bar'){ hoopBarRef.current?.stop(); return; }
   }, [phase, isHuman, startShot]);
 
-  // ── H-bar result badge ────────────────────────────────────────────────────
+  // ── H-bar result badge ───────────────────────────────────────────────────
   const { makeRadius, perfectRadius } = getZoneRadii(ftPct, zoneMult);
   const hDev = hStop !== null ? Math.abs(hStop - 50) : null;
   const hBadge = hDev === null ? null
@@ -73,17 +80,21 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
     : hDev <= makeRadius    ? 'good'
     : 'miss';
 
+  const activeBars = isThreePoint
+    ? ['h_bar', 'v_bar', 'hoop_bar']
+    : ['h_bar', 'v_bar'];
+
   return (
     <div
       className="game-engine"
       onPointerDown={handlePointer}
-      style={{ touchAction: 'none' }} // prevent browser scroll interference
+      style={{ touchAction: 'none' }}
     >
       <CourtBackground />
 
       <div
         className="game-engine__ui"
-        onPointerDown={(e) => e.stopPropagation()} // UI elements don't bubble to screen tap
+        onPointerDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="game-engine__header">
@@ -135,7 +146,7 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
             </div>
           )}
 
-          {phase === 'v_bar' && (
+          {(phase === 'v_bar' || phase === 'v_done') && (
             <div className="game-engine__bar-wrap">
               <div className="game-engine__bar-label">▲ UP / DOWN ▼</div>
               <div className="game-engine__v-row">
@@ -145,9 +156,29 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
                   ftPct={ftPct}
                   speedMult={speedMult}
                   zoneMult={zoneMult}
+                  isActive={phase === 'v_bar'}
+                  stoppedAt={phase === 'v_done' ? vStop : null}
+                  onStop={stopVBar}
+                />
+                {hBadge && (
+                  <div className={`game-engine__h-badge game-engine__h-badge--${hBadge}`}>
+                    {hBadge === 'perfect' ? '🔥' : hBadge === 'good' ? '✓' : '✗'} H
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {phase === 'hoop_bar' && (
+            <div className="game-engine__bar-wrap game-engine__hoop-wrap">
+              <div className="game-engine__bar-label">🏀 ARC / DEPTH 🏀</div>
+              <div className="game-engine__hoop-row">
+                <HoopAimer
+                  ref={hoopBarRef}
+                  zoneMult={zoneMult}
                   isActive={true}
                   stoppedAt={null}
-                  onStop={stopVBar}
+                  onStop={stopHoopBar}
                 />
                 {hBadge && (
                   <div className={`game-engine__h-badge game-engine__h-badge--${hBadge}`}>
@@ -161,26 +192,29 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
           {phase === 'result' && hStop !== null && vStop !== null && (
             <div className="game-engine__bar-wrap game-engine__bars--result">
               <TimingBar orientation="horizontal" ftPct={ftPct} speedMult={speedMult} zoneMult={zoneMult} isActive={false} stoppedAt={hStop} />
-              <TimingBar orientation="vertical"   ftPct={ftPct} speedMult={speedMult} zoneMult={zoneMult} isActive={false} stoppedAt={vStop} />
+              {isThreePoint && rStop !== null ? (
+                <HoopAimer zoneMult={zoneMult} isActive={false} stoppedAt={rStop} />
+              ) : (
+                <TimingBar orientation="vertical" ftPct={ftPct} speedMult={speedMult} zoneMult={zoneMult} isActive={false} stoppedAt={vStop} />
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Basketball tap button — lives outside the UI stopPropagation zone */}
+      {/* Basketball tap button */}
       <div className="game-engine__bottom">
         {isHuman && phase !== 'done' && (
           <>
-            <div className={`game-engine__tap-hint ${['h_bar','v_bar'].includes(phase) ? 'game-engine__tap-hint--go' : ''}`}>
-              {phase === 'ready'  && 'TAP ANYWHERE TO SHOOT'}
-              {phase === 'h_bar'  && '⚡ TAP TO STOP! ⚡'}
-              {phase === 'v_bar'  && '⚡ TAP TO STOP! ⚡'}
-              {phase === 'result' && '— NEXT SHOT —'}
+            <div className={`game-engine__tap-hint ${activeBars.includes(phase) ? 'game-engine__tap-hint--go' : ''}`}>
+              {phase === 'ready'    && 'TAP ANYWHERE TO SHOOT'}
+              {phase === 'h_bar'   && '⚡ TAP TO STOP! ⚡'}
+              {phase === 'v_bar'   && '⚡ TAP TO STOP! ⚡'}
+              {phase === 'hoop_bar'&& '⚡ TAP TO STOP! ⚡'}
+              {phase === 'result'  && (isThreePoint ? '— NEXT 3 —' : '— NEXT SHOT —')}
             </div>
-            {/* The 🏀 button is purely visual — the whole screen is already
-                the tap target via onPointerDown on .game-engine */}
             <div
-              className={`basketball-tap-btn ${['ready','h_bar','v_bar'].includes(phase) ? 'basketball-tap-btn--active' : 'basketball-tap-btn--dim'}`}
+              className={`basketball-tap-btn ${activeBars.includes(phase) ? 'basketball-tap-btn--active' : 'basketball-tap-btn--dim'}`}
               aria-hidden="true"
             >
               🏀

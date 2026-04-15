@@ -1,98 +1,132 @@
 import { useState, useCallback, useRef } from 'react';
-import { calculateShotResult, simulateCpuShot, getDifficulty } from '../utils/gameUtils';
+import { calculateShotResult, calculateThreePointResult, simulateCpuShot, getDifficulty } from '../utils/gameUtils';
 import { playSwish, playClank, playPerfect, playTap, resumeAudio } from '../utils/audioUtils';
 
 /**
- * Core game engine hook for Free Throw Legends.
+ * Core game engine hook.
  *
- * Players: array of { player, isHuman }
- * Alternates shots between players; tracks scores.
- *
- * Phases: 'ready' | 'h_bar' | 'h_done' | 'v_bar' | 'result' | 'done'
+ * FT phases:  ready → h_bar → h_done → v_bar → result → (loop | done)
+ * 3PT phases: ready → h_bar → h_done → v_bar → v_done → hoop_bar → result → (loop | done)
  */
-export function useGame({ players, totalShots, onComplete, difficulty = 'pro' }) {
-  const { speedMult, zoneMult } = getDifficulty(difficulty);
+export function useGame({ players, totalShots, onComplete, difficulty = 'rookie', isThreePoint = false }) {
+  const { speedMult, zoneMult, cpuSpread } = getDifficulty(difficulty);
+
   const [phase, setPhase] = useState('ready');
-  const [currentShotNum, setCurrentShotNum] = useState(1); // 1-indexed
+  const [currentShotNum, setCurrentShotNum] = useState(1);
   const [currentPlayerIdx, setCurrentPlayerIdx] = useState(0);
   const [hStop, setHStop] = useState(null);
   const [vStop, setVStop] = useState(null);
-  const [lastResult, setLastResult] = useState(null); // { result, hDev, vDev, madeShot }
+  const [rStop, setRStop] = useState(null);   // 3PT radial dimension
+  const [lastResult, setLastResult] = useState(null);
   const [scores, setScores] = useState(players.map(() => 0));
-  const [shotHistory, setShotHistory] = useState([]); // per-player shot arrays
+  const [shotHistory, setShotHistory] = useState([]);
   const [suddenDeath, setSuddenDeath] = useState(false);
   const [sdRound, setSdRound] = useState(0);
-  const [sdShots, setSdShots] = useState([]); // [{ playerIdx, madeShot }]
+  const [sdShots, setSdShots] = useState([]);
 
+  // Refs to read in callbacks without stale-closure issues
+  const hStopRef = useRef(null);
+  const vStopRef = useRef(null);
   const resultTimerRef = useRef(null);
 
   const currentPlayer = players[currentPlayerIdx];
   const ftPct = currentPlayer?.player?.ftPct ?? 75;
 
-  // ── Stop horizontal bar ───────────────────────────────────────────────────
+  // ── Stop horizontal bar ──────────────────────────────────────────────────
 
-  const stopHBar = useCallback(
-    (position) => {
-      if (phase !== 'h_bar') return;
-      resumeAudio();
-      playTap();
-      setHStop(position);
-      setPhase('h_done');
-    },
-    [phase]
-  );
+  const stopHBar = useCallback((position) => {
+    if (phase !== 'h_bar') return;
+    resumeAudio();
+    playTap();
+    hStopRef.current = position;
+    setHStop(position);
+    setPhase('h_done');
+  }, [phase]);
 
-  // ── Stop vertical bar ─────────────────────────────────────────────────────
+  // ── Stop vertical bar ────────────────────────────────────────────────────
 
-  const stopVBar = useCallback(
-    (position) => {
-      if (phase !== 'v_bar') return;
-      resumeAudio();
-      playTap();
-      setVStop(position);
+  const stopVBar = useCallback((position) => {
+    if (phase !== 'v_bar') return;
+    resumeAudio();
+    playTap();
+    vStopRef.current = position;
+    setVStop(position);
 
-      const result = calculateShotResult(hStop, position, ftPct, zoneMult);
-      setLastResult(result);
-      setPhase('result');
+    if (isThreePoint) {
+      // Advance to hoop_bar in 3PT mode — result calculated later
+      setPhase('v_done');
+      return;
+    }
 
-      if (result.result === 'perfect') playPerfect();
-      else if (result.madeShot) playSwish();
-      else playClank();
+    // Free throw: calculate result now
+    const result = calculateShotResult(hStopRef.current, position, ftPct, zoneMult);
+    finishShot(result, position);
+  }, [phase, ftPct, zoneMult, isThreePoint]);
 
-      // Update scores
-      setScores((prev) => {
-        const next = [...prev];
-        if (result.madeShot) next[currentPlayerIdx]++;
-        return next;
-      });
+  // ── Stop hoop (radial) bar — 3PT only ───────────────────────────────────
 
-      setShotHistory((prev) => {
-        const next = prev.map((a) => [...(a || [])]);
-        while (next.length <= currentPlayerIdx) next.push([]);
-        next[currentPlayerIdx] = [
-          ...next[currentPlayerIdx],
-          { result: result.result, madeShot: result.madeShot },
-        ];
-        return next;
-      });
+  const stopHoopBar = useCallback((position) => {
+    if (phase !== 'hoop_bar') return;
+    resumeAudio();
+    playTap();
+    setRStop(position);
 
-      // Auto-advance after 1.5s
-      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
-      resultTimerRef.current = setTimeout(() => {
-        advanceToNextShot(result);
-      }, 1500);
-    },
-    [phase, hStop, ftPct, zoneMult, currentPlayerIdx, currentShotNum, players, totalShots, suddenDeath, sdRound, sdShots]
-  );
+    const result = calculateThreePointResult(hStopRef.current, vStopRef.current, position, zoneMult);
+    finishShot(result, null, position);
+  }, [phase, zoneMult]);
 
-  // ── CPU auto-shot ─────────────────────────────────────────────────────────
+  // ── Shared shot-finish logic ─────────────────────────────────────────────
+
+  function finishShot(result) {
+    setLastResult(result);
+    setPhase('result');
+
+    if (result.result === 'perfect') playPerfect();
+    else if (result.madeShot) playSwish();
+    else playClank();
+
+    setScores((prev) => {
+      const next = [...prev];
+      if (result.madeShot) next[currentPlayerIdx]++;
+      return next;
+    });
+
+    setShotHistory((prev) => {
+      const next = prev.map((a) => [...(a || [])]);
+      while (next.length <= currentPlayerIdx) next.push([]);
+      next[currentPlayerIdx] = [
+        ...next[currentPlayerIdx],
+        { result: result.result, madeShot: result.madeShot },
+      ];
+      return next;
+    });
+
+    if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+    resultTimerRef.current = setTimeout(() => advanceToNextShot(result), 1500);
+  }
+
+  // ── CPU auto-shot ────────────────────────────────────────────────────────
 
   const takeCpuShot = useCallback(() => {
     if (!currentPlayer.isHuman && phase === 'ready') {
-      const { hStop: h, vStop: v } = simulateCpuShot(ftPct, zoneMult);
-      const result = calculateShotResult(h, v, ftPct, zoneMult);
+      const { hStop: h, vStop: v } = simulateCpuShot(ftPct, zoneMult, cpuSpread);
+      hStopRef.current = h;
+      vStopRef.current = v;
       setHStop(h);
       setVStop(v);
+
+      let result;
+      if (isThreePoint) {
+        // CPU also needs a radial shot; simulate it with same spread
+        const rVal = Math.min(99, Math.max(1,
+          28 * zoneMult * (0.5 + (Math.random() - 0.5) * 1.4 * cpuSpread)
+        ));
+        setRStop(rVal);
+        result = calculateThreePointResult(h, v, rVal, zoneMult);
+      } else {
+        result = calculateShotResult(h, v, ftPct, zoneMult);
+      }
+
       setLastResult(result);
       setPhase('result');
 
@@ -117,13 +151,11 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'pro' })
       });
 
       if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
-      resultTimerRef.current = setTimeout(() => {
-        advanceToNextShot(result);
-      }, 1000);
+      resultTimerRef.current = setTimeout(() => advanceToNextShot(result), 1000);
     }
-  }, [currentPlayer, phase, ftPct, currentPlayerIdx]);
+  }, [currentPlayer, phase, ftPct, zoneMult, cpuSpread, isThreePoint, currentPlayerIdx]);
 
-  // ── Advance to next shot ──────────────────────────────────────────────────
+  // ── Advance to next shot ─────────────────────────────────────────────────
 
   function advanceToNextShot(result) {
     const isMultiplayer = players.length > 1;
@@ -133,22 +165,18 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'pro' })
       return;
     }
 
-    // Normal play: determine if we've exhausted shots for ALL players
-    const nextPlayerIdx = isMultiplayer ? (currentPlayerIdx + 1) % players.length : 0;
+    const nextPlayerIdx  = isMultiplayer ? (currentPlayerIdx + 1) % players.length : 0;
     const isRoundComplete = !isMultiplayer || nextPlayerIdx === 0;
-    const nextShotNum = isRoundComplete ? currentShotNum + 1 : currentShotNum;
+    const nextShotNum    = isRoundComplete ? currentShotNum + 1 : currentShotNum;
 
     if (nextShotNum > totalShots && isRoundComplete) {
-      // Check if we need sudden death
       setScores((prevScores) => {
         if (isMultiplayer && prevScores[0] === prevScores[1]) {
-          // Tie → sudden death
           setSuddenDeath(true);
           setSdRound(1);
           setSdShots([]);
           setCurrentPlayerIdx(0);
-          setHStop(null);
-          setVStop(null);
+          setHStop(null); setVStop(null); setRStop(null);
           setLastResult(null);
           setPhase('ready');
         } else {
@@ -157,9 +185,7 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'pro' })
             scores: prevScores,
             shotHistory,
             winner: isMultiplayer
-              ? prevScores[0] > prevScores[1]
-                ? players[0].player
-                : players[1].player
+              ? prevScores[0] > prevScores[1] ? players[0].player : players[1].player
               : null,
           });
         }
@@ -168,9 +194,9 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'pro' })
     } else {
       setCurrentPlayerIdx(nextPlayerIdx);
       setCurrentShotNum(nextShotNum);
-      setHStop(null);
-      setVStop(null);
+      setHStop(null); setVStop(null); setRStop(null);
       setLastResult(null);
+      hStopRef.current = null; vStopRef.current = null;
       setPhase('ready');
     }
   }
@@ -180,15 +206,12 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'pro' })
     setSdShots(newSdShots);
 
     const isLastInRound = currentPlayerIdx === players.length - 1;
-
     if (isLastInRound && newSdShots.length >= players.length) {
-      // Evaluate this SD round
       const roundShots = newSdShots.slice(-players.length);
       const p1Made = roundShots.find((s) => s.playerIdx === 0)?.madeShot;
       const p2Made = roundShots.find((s) => s.playerIdx === 1)?.madeShot;
 
       if (p1Made !== p2Made) {
-        // One made, one missed → winner decided
         setScores((prevScores) => {
           const winner = p1Made ? players[0].player : players[1].player;
           setPhase('done');
@@ -197,19 +220,17 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'pro' })
         });
         return;
       }
-      // Still tied → next SD round
       setSdRound((r) => r + 1);
     }
 
     const nextPlayerIdx = (currentPlayerIdx + 1) % players.length;
     setCurrentPlayerIdx(nextPlayerIdx);
-    setHStop(null);
-    setVStop(null);
+    setHStop(null); setVStop(null); setRStop(null);
     setLastResult(null);
     setPhase('ready');
   }
 
-  // ── Start shot sequence ───────────────────────────────────────────────────
+  // ── Phase transitions ────────────────────────────────────────────────────
 
   const startShot = useCallback(() => {
     if (phase !== 'ready') return;
@@ -222,25 +243,19 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'pro' })
     setPhase('v_bar');
   }, [phase]);
 
+  const advanceToHoopBar = useCallback(() => {
+    if (phase !== 'v_done') return;
+    setPhase('hoop_bar');
+  }, [phase]);
+
   return {
-    phase,
-    currentShotNum,
-    currentPlayerIdx,
-    currentPlayer,
-    hStop,
-    vStop,
-    lastResult,
-    scores,
-    shotHistory,
-    suddenDeath,
-    sdRound,
-    startShot,
-    stopHBar,
-    stopVBar,
-    advanceToVBar,
+    phase, currentShotNum, currentPlayerIdx, currentPlayer,
+    hStop, vStop, rStop, lastResult,
+    scores, shotHistory, suddenDeath, sdRound,
+    startShot, stopHBar, stopVBar, stopHoopBar,
+    advanceToVBar, advanceToHoopBar,
     takeCpuShot,
-    ftPct,
-    speedMult,
-    zoneMult,
+    ftPct, speedMult, zoneMult,
+    isThreePoint,
   };
 }
