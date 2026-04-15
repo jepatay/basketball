@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { savePlayerAvatar, addPlayer, loadPlayers } from '../firebase/api';
+import { savePlayerAvatar, addPlayer } from '../firebase/api';
 import { ALL_TAGS } from '../data/players';
+import { resizeBase64Image } from '../utils/imageUtils';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
@@ -38,11 +39,11 @@ export default function Admin() {
       : slugify(name);
 
     try {
-      // Server resizes the image to 300×300 JPEG and returns base64
+      // Server calls DALL-E 3, returns raw PNG base64
       const res = await fetch(`${API_BASE}/api/generate-avatar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: name.trim(), playerSlug: playerId }),
+        body: JSON.stringify({ playerName: name.trim() }),
       });
 
       if (!res.ok) {
@@ -50,7 +51,11 @@ export default function Admin() {
         throw new Error(err.error || `HTTP ${res.status}`);
       }
 
-      const { imageBase64 } = await res.json();
+      const { imageBase64: rawBase64 } = await res.json();
+
+      // Resize to 300×300 JPEG client-side via Canvas (~40-60 KB for Firestore)
+      setStatus('Resizing image…');
+      const imageBase64 = await resizeBase64Image(rawBase64, 300, 0.82);
       setPreviewSrc(`data:image/jpeg;base64,${imageBase64}`);
 
       setStatus('Saving to Firestore…');
