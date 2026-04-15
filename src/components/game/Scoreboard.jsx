@@ -1,13 +1,27 @@
-/** Live scoreboard displayed during gameplay */
-export default function Scoreboard({ players, scores, currentShotNum, totalShots, suddenDeath, sdRound }) {
+/** Live scoreboard — shows "made/attempted" and running FT% */
+export default function Scoreboard({ players, scores, shotHistory, currentShotNum, totalShots, suddenDeath, sdRound }) {
   return (
     <div className="scoreboard">
-      {players.map((p, i) => (
-        <div key={p.player.id} className={`scoreboard__player ${i === 0 ? 'scoreboard__player--left' : 'scoreboard__player--right'}`}>
-          <div className="scoreboard__name">{p.player.name.split(' ').slice(-1)[0]}</div>
-          <div className="scoreboard__score">{scores[i]}</div>
-        </div>
-      ))}
+      {players.map((p, i) => {
+        const made     = scores[i] ?? 0;
+        const attempts = shotHistory?.[i]?.length ?? 0;
+        const pct      = attempts > 0 ? Math.round((made / attempts) * 100) : null;
+        const isLeft   = i === 0;
+
+        return (
+          <div key={p.player.id} className={`scoreboard__player ${isLeft ? 'scoreboard__player--left' : 'scoreboard__player--right'}`}>
+            <div className="scoreboard__name">{p.player.name.split(' ').slice(-1)[0].toUpperCase()}</div>
+            <div className="scoreboard__score-wrap">
+              <span className="scoreboard__made">{made}</span>
+              <span className="scoreboard__sep">/</span>
+              <span className="scoreboard__attempts">{attempts}</span>
+            </div>
+            {pct !== null && (
+              <div className="scoreboard__pct">{pct}%</div>
+            )}
+          </div>
+        );
+      })}
 
       <div className="scoreboard__center">
         {suddenDeath ? (
@@ -15,7 +29,7 @@ export default function Scoreboard({ players, scores, currentShotNum, totalShots
         ) : (
           <>
             <div className="scoreboard__shot-num">{currentShotNum}</div>
-            <div className="scoreboard__shot-total">/ {totalShots}</div>
+            <div className="scoreboard__shot-of">of {totalShots}</div>
           </>
         )}
       </div>
