@@ -17,11 +17,13 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
     startShot, stopHBar, stopVBar, advanceToVBar, takeCpuShot, ftPct,
   } = game;
 
-  // Refs to imperatively call stop() from anywhere on screen
-  const hBarRef = useRef(null);
-  const vBarRef = useRef(null);
+  const hBarRef    = useRef(null);
+  const vBarRef    = useRef(null);
+  // Prevents the same physical tap from triggering two actions
+  // (e.g. startShot AND stopBar in the same gesture).
+  const tapLockRef = useRef(false);
 
-  // Auto-trigger CPU shots
+  // ── CPU auto-shot ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (phase === 'ready' && currentPlayer && !currentPlayer.isHuman) {
       const t = setTimeout(() => takeCpuShot(), 700);
@@ -29,7 +31,7 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
     }
   }, [phase, currentPlayer, takeCpuShot]);
 
-  // Auto-advance h_done → v_bar
+  // ── Auto h_done → v_bar ───────────────────────────────────────────────────
   useEffect(() => {
     if (phase === 'h_done') {
       const t = setTimeout(() => advanceToVBar(), 350);
@@ -42,16 +44,27 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
   const isHuman     = currentPlayer?.isHuman ?? true;
   const playerLabel = currentPlayer?.label || currentPlayer?.player?.name || 'Player';
 
-  // ── Master tap handler — fires on ANY touch/click anywhere on the screen ──
-  const handleScreenTap = useCallback(() => {
+  // ── Single master tap handler ─────────────────────────────────────────────
+  // onPointerDown fires exactly ONCE per gesture (touch OR mouse),
+  // eliminating the onTouchStart + onClick double-fire problem.
+  const handlePointer = useCallback((e) => {
+    e.preventDefault();
     resumeAudio();
-    if (!isHuman) return;
-    if (phase === 'ready')  { startShot(); return; }
-    if (phase === 'h_bar')  { hBarRef.current?.stop(); return; }
-    if (phase === 'v_bar')  { vBarRef.current?.stop(); return; }
+
+    if (!isHuman || tapLockRef.current) return;
+
+    if (phase === 'ready') {
+      // Lock for 350 ms so the same gesture can't also stop the bar
+      tapLockRef.current = true;
+      setTimeout(() => { tapLockRef.current = false; }, 350);
+      startShot();
+      return;
+    }
+    if (phase === 'h_bar') { hBarRef.current?.stop(); return; }
+    if (phase === 'v_bar') { vBarRef.current?.stop(); return; }
   }, [phase, isHuman, startShot]);
 
-  // ── Derive H-bar result badge ───────────────────────────────────────────
+  // ── H-bar result badge ────────────────────────────────────────────────────
   const { makeRadius, perfectRadius } = getZoneRadii(ftPct);
   const hDev = hStop !== null ? Math.abs(hStop - 50) : null;
   const hBadge = hDev === null ? null
@@ -62,19 +75,21 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
   return (
     <div
       className="game-engine"
-      onClick={handleScreenTap}
-      onTouchStart={(e) => { e.preventDefault(); handleScreenTap(); }}
+      onPointerDown={handlePointer}
+      style={{ touchAction: 'none' }} // prevent browser scroll interference
     >
-      {/* ── Court background fills entire screen ── */}
       <CourtBackground />
 
-      {/* ── All UI sits on top of the court ── */}
-      <div className="game-engine__ui" onClick={(e) => e.stopPropagation()}>
-
+      <div
+        className="game-engine__ui"
+        onPointerDown={(e) => e.stopPropagation()} // UI elements don't bubble to screen tap
+      >
         {/* Header */}
         <div className="game-engine__header">
-          <button className="btn btn--ghost btn--sm"
-            onClick={(e) => { e.stopPropagation(); onExit(); }}>✕ Exit</button>
+          <button
+            className="btn btn--ghost btn--sm"
+            onPointerDown={(e) => { e.stopPropagation(); onExit(); }}
+          >✕ Exit</button>
           <div className="game-engine__shooter-name">{playerLabel}</div>
           <div className="game-engine__player-ft">{ftPct}% FT</div>
         </div>
@@ -147,7 +162,7 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
         </div>
       </div>
 
-      {/* ── Basketball tap button — BIG, bottom center, outside stopPropagation ── */}
+      {/* Basketball tap button — lives outside the UI stopPropagation zone */}
       <div className="game-engine__bottom">
         {isHuman && phase !== 'done' && (
           <>
@@ -156,16 +171,15 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
               {phase === 'h_bar'  && '⚡ TAP TO STOP! ⚡'}
               {phase === 'v_bar'  && '⚡ TAP TO STOP! ⚡'}
               {phase === 'result' && '— NEXT SHOT —'}
-              {phase === 'h_done' && ''}
             </div>
-            <button
+            {/* The 🏀 button is purely visual — the whole screen is already
+                the tap target via onPointerDown on .game-engine */}
+            <div
               className={`basketball-tap-btn ${['ready','h_bar','v_bar'].includes(phase) ? 'basketball-tap-btn--active' : 'basketball-tap-btn--dim'}`}
-              onClick={(e) => { e.stopPropagation(); handleScreenTap(); }}
-              onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); handleScreenTap(); }}
-              aria-label="Tap to shoot"
+              aria-hidden="true"
             >
               🏀
-            </button>
+            </div>
           </>
         )}
         {(!isHuman || phase === 'done') && (
