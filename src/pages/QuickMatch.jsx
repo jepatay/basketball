@@ -4,6 +4,7 @@ import PlayerSelect from '../components/players/PlayerSelect';
 import GameEngine from '../components/game/GameEngine';
 import AvatarDisplay from '../components/players/AvatarDisplay';
 import { loadPlayers, seedPlayersIfNeeded, submitToLeaderboard } from '../firebase/api';
+import { DIFFICULTIES } from '../utils/gameUtils';
 import PLAYERS from '../data/players';
 
 const MATCH_LENGTHS = [10, 20, 50, 100];
@@ -15,6 +16,7 @@ export default function QuickMatch() {
   const [step, setStep] = useState('setup');
   const [players, setPlayers] = useState([]);
   const [matchLength, setMatchLength] = useState(10);
+  const [difficulty, setDifficulty] = useState('pro');
   const [name1, setName1] = useState(() => localStorage.getItem('ftl_username') || 'Player 1');
   const [name2, setName2] = useState('Player 2');
   const [player1, setPlayer1] = useState(null);
@@ -83,6 +85,18 @@ export default function QuickMatch() {
               ))}
             </div>
           </div>
+          <div className="setup-row">
+            <label className="setup-label">Difficulty</label>
+            <div className="setup-options setup-options--difficulty">
+              {DIFFICULTIES.map((d) => (
+                <button
+                  key={d.id}
+                  className={`btn btn--option btn--difficulty ${difficulty === d.id ? 'btn--option-active' : ''}`}
+                  onClick={() => setDifficulty(d.id)}
+                >{d.label}</button>
+              ))}
+            </div>
+          </div>
           <button className="btn btn--primary btn--lg" onClick={() => setStep('pick-p1')}>
             NEXT: {name1 || 'Player 1'} Picks
           </button>
@@ -136,6 +150,7 @@ export default function QuickMatch() {
             { player: player2, isHuman: true, label: name2 },
           ]}
           totalShots={matchLength}
+          difficulty={difficulty}
           onComplete={handleComplete}
           onExit={() => setStep('setup')}
         />
@@ -146,8 +161,8 @@ export default function QuickMatch() {
   if (step === 'result') {
     const { scores, winner, suddenDeath } = result;
     const isTie = scores[0] === scores[1] && !winner;
-    const winnerName = winner?.player?.id === player1?.id ? name1 : name2;
-    const winnerPlayer = winner?.player?.id === player1?.id ? player1 : player2;
+    const winnerName = winner?.id === player1?.id ? name1 : name2;
+    const winnerPlayer = winner?.id === player1?.id ? player1 : player2;
 
     return (
       <div className="page page--result">

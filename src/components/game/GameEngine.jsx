@@ -8,13 +8,14 @@ import CourtBackground from './CourtBackground';
 import { resumeAudio } from '../../utils/audioUtils';
 import { getZoneRadii } from '../../utils/gameUtils';
 
-export default function GameEngine({ players, totalShots, onComplete, onExit }) {
-  const game = useGame({ players, totalShots, onComplete });
+export default function GameEngine({ players, totalShots, onComplete, onExit, difficulty = 'pro' }) {
+  const game = useGame({ players, totalShots, onComplete, difficulty });
 
   const {
     phase, currentShotNum, currentPlayerIdx, currentPlayer,
     hStop, vStop, lastResult, scores, shotHistory, suddenDeath, sdRound,
     startShot, stopHBar, stopVBar, advanceToVBar, takeCpuShot, ftPct,
+    speedMult, zoneMult,
   } = game;
 
   const hBarRef    = useRef(null);
@@ -65,7 +66,7 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
   }, [phase, isHuman, startShot]);
 
   // ── H-bar result badge ────────────────────────────────────────────────────
-  const { makeRadius, perfectRadius } = getZoneRadii(ftPct);
+  const { makeRadius, perfectRadius } = getZoneRadii(ftPct, zoneMult);
   const hDev = hStop !== null ? Math.abs(hStop - 50) : null;
   const hBadge = hDev === null ? null
     : hDev <= perfectRadius ? 'perfect'
@@ -125,6 +126,8 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
                 ref={hBarRef}
                 orientation="horizontal"
                 ftPct={ftPct}
+                speedMult={speedMult}
+                zoneMult={zoneMult}
                 isActive={phase === 'h_bar'}
                 stoppedAt={phase === 'h_done' ? hStop : null}
                 onStop={stopHBar}
@@ -140,6 +143,8 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
                   ref={vBarRef}
                   orientation="vertical"
                   ftPct={ftPct}
+                  speedMult={speedMult}
+                  zoneMult={zoneMult}
                   isActive={true}
                   stoppedAt={null}
                   onStop={stopVBar}
@@ -155,8 +160,8 @@ export default function GameEngine({ players, totalShots, onComplete, onExit }) 
 
           {phase === 'result' && hStop !== null && vStop !== null && (
             <div className="game-engine__bar-wrap game-engine__bars--result">
-              <TimingBar orientation="horizontal" ftPct={ftPct} isActive={false} stoppedAt={hStop} />
-              <TimingBar orientation="vertical"   ftPct={ftPct} isActive={false} stoppedAt={vStop} />
+              <TimingBar orientation="horizontal" ftPct={ftPct} speedMult={speedMult} zoneMult={zoneMult} isActive={false} stoppedAt={hStop} />
+              <TimingBar orientation="vertical"   ftPct={ftPct} speedMult={speedMult} zoneMult={zoneMult} isActive={false} stoppedAt={vStop} />
             </div>
           )}
         </div>

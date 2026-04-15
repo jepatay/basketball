@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { calculateShotResult, simulateCpuShot } from '../utils/gameUtils';
+import { calculateShotResult, simulateCpuShot, getDifficulty } from '../utils/gameUtils';
 import { playSwish, playClank, playPerfect, playTap, resumeAudio } from '../utils/audioUtils';
 
 /**
@@ -10,7 +10,8 @@ import { playSwish, playClank, playPerfect, playTap, resumeAudio } from '../util
  *
  * Phases: 'ready' | 'h_bar' | 'h_done' | 'v_bar' | 'result' | 'done'
  */
-export function useGame({ players, totalShots, onComplete }) {
+export function useGame({ players, totalShots, onComplete, difficulty = 'pro' }) {
+  const { speedMult, zoneMult } = getDifficulty(difficulty);
   const [phase, setPhase] = useState('ready');
   const [currentShotNum, setCurrentShotNum] = useState(1); // 1-indexed
   const [currentPlayerIdx, setCurrentPlayerIdx] = useState(0);
@@ -50,7 +51,7 @@ export function useGame({ players, totalShots, onComplete }) {
       playTap();
       setVStop(position);
 
-      const result = calculateShotResult(hStop, position, ftPct);
+      const result = calculateShotResult(hStop, position, ftPct, zoneMult);
       setLastResult(result);
       setPhase('result');
 
@@ -81,15 +82,15 @@ export function useGame({ players, totalShots, onComplete }) {
         advanceToNextShot(result);
       }, 1500);
     },
-    [phase, hStop, ftPct, currentPlayerIdx, currentShotNum, players, totalShots, suddenDeath, sdRound, sdShots]
+    [phase, hStop, ftPct, zoneMult, currentPlayerIdx, currentShotNum, players, totalShots, suddenDeath, sdRound, sdShots]
   );
 
   // ── CPU auto-shot ─────────────────────────────────────────────────────────
 
   const takeCpuShot = useCallback(() => {
     if (!currentPlayer.isHuman && phase === 'ready') {
-      const { hStop: h, vStop: v } = simulateCpuShot(ftPct);
-      const result = calculateShotResult(h, v, ftPct);
+      const { hStop: h, vStop: v } = simulateCpuShot(ftPct, zoneMult);
+      const result = calculateShotResult(h, v, ftPct, zoneMult);
       setHStop(h);
       setVStop(v);
       setLastResult(result);
@@ -157,8 +158,8 @@ export function useGame({ players, totalShots, onComplete }) {
             shotHistory,
             winner: isMultiplayer
               ? prevScores[0] > prevScores[1]
-                ? players[0]
-                : players[1]
+                ? players[0].player
+                : players[1].player
               : null,
           });
         }
@@ -189,7 +190,7 @@ export function useGame({ players, totalShots, onComplete }) {
       if (p1Made !== p2Made) {
         // One made, one missed → winner decided
         setScores((prevScores) => {
-          const winner = p1Made ? players[0] : players[1];
+          const winner = p1Made ? players[0].player : players[1].player;
           setPhase('done');
           onComplete?.({ scores: prevScores, shotHistory, winner, suddenDeath: true });
           return prevScores;
@@ -239,5 +240,7 @@ export function useGame({ players, totalShots, onComplete }) {
     advanceToVBar,
     takeCpuShot,
     ftPct,
+    speedMult,
+    zoneMult,
   };
 }

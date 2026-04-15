@@ -10,38 +10,45 @@
  */
 
 /**
- * Bar oscillation period in ms (one full sweep 0→100→0).
- * INVERSE of FT%: worse shooter = faster, scarier bar.
+ * Difficulty levels.
+ * speedMult > 1 → slower bar (easier); < 1 → faster bar (harder)
+ * zoneMult  > 1 → wider zone (easier); < 1 → narrower zone (harder)
  *
- * Shaq  52% → 650 ms  (very fast)
- * LeBron73% → 1100 ms (medium)
- * Curry  91% → 2200 ms (slow and deliberate)
+ * Pro = current baseline (multipliers of 1.0).
  */
-export function getBarPeriodMs(ftPct) {
-  const minPeriod = 650;   // fastest (worst shooters ~50%)
-  const maxPeriod = 2200;  // slowest (best shooters ~95%)
-  const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
-  return Math.round(minPeriod + t * (maxPeriod - minPeriod));
+export const DIFFICULTIES = [
+  { id: 'rookie',  label: 'Rookie',   speedMult: 1.5,  zoneMult: 1.3  },
+  { id: 'pro',     label: 'Pro',       speedMult: 1.0,  zoneMult: 1.0  },
+  { id: 'allstar', label: 'All-Star',  speedMult: 0.75, zoneMult: 0.85 },
+  { id: 'legend',  label: 'Legend',    speedMult: 0.55, zoneMult: 0.7  },
+];
+
+export function getDifficulty(id) {
+  return DIFFICULTIES.find((d) => d.id === id) ?? DIFFICULTIES[1];
 }
 
 /**
- * Zone radii on the 0–100 bar scale (center = 50, so radius is 0–50).
+ * Bar oscillation period in ms (one full sweep 0→100→0).
+ * INVERSE of FT%: worse shooter = faster, scarier bar.
+ * speedMult scales the period (1.5 = 50% slower, 0.55 = 45% faster).
  *
- * makeRadius:    how close to center you must stop to score
- * perfectRadius: inner zone for "Perfect" result + swish sound
- *
- * Both are intentionally NARROW. The speed difference creates the FT% gap.
- *   Shaq  52% → makeRadius  9 → only 18% of bar scores (both bars: ~3%)
- *   LeBron73% → makeRadius 13 → 26% of bar scores (both bars: ~7%)
- *   Curry  91% → makeRadius 17 → 34% of bar scores (both bars: ~12%)
- *
- * The actual in-game make rate is much higher because a FOCUSED human
- * can aim near the center — the fast bar just makes that harder to do.
+ * At Pro (1.0x): Shaq 52% → 650ms, Curry 91% → 2200ms
  */
-export function getZoneRadii(ftPct) {
+export function getBarPeriodMs(ftPct, speedMult = 1.0) {
+  const minPeriod = 650;
+  const maxPeriod = 2200;
   const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
-  const makeRadius = 9 + t * 8;   // 9 for worst, 17 for best
-  const perfectRadius = 3.5;       // fixed small perfect zone
+  return Math.round((minPeriod + t * (maxPeriod - minPeriod)) * speedMult);
+}
+
+/**
+ * Zone radii on the 0–100 bar scale (center = 50).
+ * zoneMult scales both zones (1.3 = 30% wider, 0.7 = 30% narrower).
+ */
+export function getZoneRadii(ftPct, zoneMult = 1.0) {
+  const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
+  const makeRadius    = (9 + t * 8) * zoneMult;
+  const perfectRadius = 3.5 * Math.max(0.75, zoneMult);
   return { makeRadius, perfectRadius };
 }
 
@@ -61,10 +68,10 @@ export function getBarPosition(elapsedMs, periodMs) {
  * @param {number} vStop  0–100
  * @param {number} ftPct  0–100
  */
-export function calculateShotResult(hStop, vStop, ftPct) {
+export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0) {
   const hDev = Math.abs(hStop - 50);
   const vDev = Math.abs(vStop - 50);
-  const { makeRadius, perfectRadius } = getZoneRadii(ftPct);
+  const { makeRadius, perfectRadius } = getZoneRadii(ftPct, zoneMult);
 
   const hInZone = hDev <= makeRadius;
   const vInZone = vDev <= makeRadius;
@@ -88,8 +95,8 @@ export function calculateShotResult(hStop, vStop, ftPct) {
  * CPU "aims" near the center but with realistic variance based on FT%.
  * Better FT% = tighter grouping around center.
  */
-export function simulateCpuShot(ftPct) {
-  const { makeRadius } = getZoneRadii(ftPct);
+export function simulateCpuShot(ftPct, zoneMult = 1.0) {
+  const { makeRadius } = getZoneRadii(ftPct, zoneMult);
   // Use a normal-ish distribution: most stops near center, some outliers
   const sampleDev = () => {
     // Box-Muller approximation with capped sigma

@@ -4,6 +4,7 @@ import PlayerSelect from '../components/players/PlayerSelect';
 import GameEngine from '../components/game/GameEngine';
 import AvatarDisplay from '../components/players/AvatarDisplay';
 import { loadPlayers, seedPlayersIfNeeded, savePersonalBest, getPersonalBest, submitToLeaderboard, getLeaderboard } from '../firebase/api';
+import { DIFFICULTIES } from '../utils/gameUtils';
 import PLAYERS from '../data/players';
 
 const STEPS = ['pick', 'playing', 'result'];
@@ -14,6 +15,7 @@ export default function CenturyChallenge() {
 
   const [step, setStep] = useState('pick');
   const [players, setPlayers] = useState([]);
+  const [difficulty, setDifficulty] = useState('pro');
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [gameResult, setGameResult] = useState(null);
   const [personalBest, setPersonalBest] = useState(null);
@@ -90,6 +92,18 @@ export default function CenturyChallenge() {
                 Personal Best: <strong>{personalBest.score}/100</strong> ({personalBest.pct}%)
               </div>
             )}
+            <div className="setup-row setup-row--inline">
+              <label className="setup-label">Difficulty</label>
+              <div className="setup-options setup-options--difficulty">
+                {DIFFICULTIES.map((d) => (
+                  <button
+                    key={d.id}
+                    className={`btn btn--option btn--difficulty ${difficulty === d.id ? 'btn--option-active' : ''}`}
+                    onClick={() => setDifficulty(d.id)}
+                  >{d.label}</button>
+                ))}
+              </div>
+            </div>
             <div className="century-pick-confirm__actions">
               <button className="btn btn--primary btn--lg" onClick={handleStart}>
                 🎯 SHOOT 100 FREE THROWS
@@ -117,6 +131,7 @@ export default function CenturyChallenge() {
         <GameEngine
           players={[{ player: selectedPlayer, isHuman: true, label: username }]}
           totalShots={100}
+          difficulty={difficulty}
           onComplete={handleComplete}
           onExit={() => setStep('pick')}
         />

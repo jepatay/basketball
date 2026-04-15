@@ -15,7 +15,7 @@ import { getBarPosition, getBarPeriodMs, getZoneRadii } from '../../utils/gameUt
  *   onStop:      callback(position: 0-100)
  */
 const TimingBar = forwardRef(function TimingBar(
-  { orientation = 'horizontal', ftPct = 75, isActive = false, stoppedAt = null, onStop },
+  { orientation = 'horizontal', ftPct = 75, speedMult = 1.0, zoneMult = 1.0, isActive = false, stoppedAt = null, onStop },
   ref
 ) {
   const rafRef      = useRef(null);
@@ -23,8 +23,8 @@ const TimingBar = forwardRef(function TimingBar(
   const positionRef  = useRef(50);
   const [displayPos, setDisplayPos] = useState(50);
 
-  const periodMs = getBarPeriodMs(ftPct);
-  const { makeRadius, perfectRadius } = getZoneRadii(ftPct);
+  const periodMs = getBarPeriodMs(ftPct, speedMult);
+  const { makeRadius, perfectRadius } = getZoneRadii(ftPct, zoneMult);
 
   // ── Animation loop ──────────────────────────────────────────────────────
   const animate = useCallback((timestamp) => {

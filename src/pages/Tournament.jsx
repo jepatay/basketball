@@ -5,7 +5,7 @@ import BracketView from '../components/tournament/BracketView';
 import GameEngine from '../components/game/GameEngine';
 import { loadPlayers, seedPlayersIfNeeded, saveTournamentResult } from '../firebase/api';
 import { generateBracket, advanceWinner, getNextHumanMatch, getNextCpuMatch, isTournamentComplete, getChampion, getRoundName } from '../utils/bracketUtils';
-import { simulateCpuShot, calculateShotResult } from '../utils/gameUtils';
+import { simulateCpuShot, calculateShotResult, DIFFICULTIES, getDifficulty } from '../utils/gameUtils';
 import PLAYERS from '../data/players';
 
 const BRACKET_SIZES = [8, 16, 32];
@@ -21,6 +21,7 @@ export default function Tournament() {
   // Config state
   const [bracketSize, setBracketSize] = useState(8);
   const [matchLength, setMatchLength] = useState(10);
+  const [difficulty, setDifficulty] = useState('pro');
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [step, setStep] = useState('setup');
 
@@ -71,24 +72,24 @@ export default function Tournament() {
 
   // Simulate all CPU-only matches quickly
   const simulateCpuMatches = useCallback((currentBracket) => {
+    const { zoneMult } = getDifficulty(difficulty);
     let b = currentBracket;
     let cpuMatch = getNextCpuMatch(b, [humanPlayer1?.id, humanPlayer2?.id].filter(Boolean));
     while (cpuMatch) {
       const { roundIdx, matchIdx, match } = cpuMatch;
-      // Simulate match: each player takes totalShots shots
       let score1 = 0, score2 = 0;
       for (let i = 0; i < matchLength; i++) {
-        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct);
-        if (calculateShotResult(h1, v1, match.player1.ftPct).madeShot) score1++;
-        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct);
-        if (calculateShotResult(h2, v2, match.player2.ftPct).madeShot) score2++;
+        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult);
+        if (calculateShotResult(h1, v1, match.player1.ftPct, zoneMult).madeShot) score1++;
+        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult);
+        if (calculateShotResult(h2, v2, match.player2.ftPct, zoneMult).madeShot) score2++;
       }
       // Tiebreaker
       while (score1 === score2) {
-        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct);
-        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct);
-        const m1 = calculateShotResult(h1, v1, match.player1.ftPct).madeShot;
-        const m2 = calculateShotResult(h2, v2, match.player2.ftPct).madeShot;
+        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult);
+        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult);
+        const m1 = calculateShotResult(h1, v1, match.player1.ftPct, zoneMult).madeShot;
+        const m2 = calculateShotResult(h2, v2, match.player2.ftPct, zoneMult).madeShot;
         if (m1 && !m2) score1++;
         else if (!m1 && m2) score2++;
       }
@@ -97,7 +98,7 @@ export default function Tournament() {
       cpuMatch = getNextCpuMatch(b, [humanPlayer1?.id, humanPlayer2?.id].filter(Boolean));
     }
     return b;
-  }, [matchLength, humanPlayer1, humanPlayer2]);
+  }, [matchLength, difficulty, humanPlayer1, humanPlayer2]);
 
   const handleStartBracket = () => {
     const simulated = simulateCpuMatches(bracket);
@@ -135,6 +136,7 @@ export default function Tournament() {
   const handleMatchComplete = useCallback(({ scores, winner }) => {
     if (!currentMatch) return;
     const { roundIdx, matchIdx, match } = currentMatch;
+    // winner from useGame is now a raw player object (.player already extracted)
     const actualWinner = winner || (scores[0] >= scores[1] ? match.player1 : match.player2);
     const updated = advanceWinner(bracket, roundIdx, matchIdx, actualWinner, scores[0], scores[1]);
 
@@ -178,6 +180,19 @@ export default function Tournament() {
                   className={`btn btn--option ${matchLength === l ? 'btn--option-active' : ''}`}
                   onClick={() => setMatchLength(l)}
                 >{l} FTs</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="setup-row">
+            <label className="setup-label">Difficulty</label>
+            <div className="setup-options setup-options--difficulty">
+              {DIFFICULTIES.map((d) => (
+                <button
+                  key={d.id}
+                  className={`btn btn--option btn--difficulty ${difficulty === d.id ? 'btn--option-active' : ''}`}
+                  onClick={() => setDifficulty(d.id)}
+                >{d.label}</button>
               ))}
             </div>
           </div>
@@ -299,6 +314,7 @@ export default function Tournament() {
         <GameEngine
           players={gamePlayers}
           totalShots={matchLength}
+          difficulty={difficulty}
           onComplete={handleMatchComplete}
           onExit={() => setStep('bracket-view')}
         />

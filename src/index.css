@@ -224,10 +224,25 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
   width: 100%;
 }
 .setup-row    { display: flex; flex-direction: column; gap: 8px; }
+.setup-row--inline { flex-direction: column; align-items: flex-start; }
 .setup-label  { font-family: var(--font-display); font-size: 1rem; color: var(--orange); letter-spacing: 0.08em; }
 .setup-options{ display: flex; flex-wrap: wrap; gap: 8px; }
+.setup-options--difficulty { gap: 6px; }
 .setup-info   { font-size: 0.95rem; color: var(--grey); line-height: 1.5; }
 .setup-info strong { color: var(--white); }
+
+/* Difficulty buttons: colour-coded Rookie→Legend */
+.btn--difficulty { min-width: 72px; font-size: 0.85rem; }
+.btn--difficulty:nth-child(1)  { --diff-color: var(--green); }
+.btn--difficulty:nth-child(2)  { --diff-color: var(--teal); }
+.btn--difficulty:nth-child(3)  { --diff-color: #FF9A3C; }
+.btn--difficulty:nth-child(4)  { --diff-color: var(--red); }
+.btn--difficulty.btn--option-active {
+  background: var(--diff-color);
+  border-color: var(--diff-color);
+  color: var(--dark);
+  font-weight: 700;
+}
 
 /* ── Home screen ──────────────────────────────────────────────────────────── */
 .home {
