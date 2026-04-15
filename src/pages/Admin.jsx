@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { savePlayerAvatar, addPlayer, loadPlayers } from '../firebase/api';
-import { ALL_TAGS } from '../data/players';
+import { savePlayerAvatar, addPlayer, loadPlayers, seedPlayersIfNeeded } from '../firebase/api';
+import PLAYERS, { ALL_TAGS } from '../data/players';
 import { resizeBase64Image } from '../utils/imageUtils';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
@@ -36,25 +36,40 @@ export default function Admin() {
   const [existingPlayerId, setExistingPlayerId] = useState('');
 
   // ── Bulk generation ──────────────────────────────────────────────────────
-  const [bulkPlayers, setBulkPlayers]       = useState([]);       // all players from Firestore
-  const [bulkLoading, setBulkLoading]       = useState(false);    // loading the list
+  // avatarStatus: map of playerId → true (has avatar) | false (missing)
+  // We always use the static PLAYERS list as the source of truth (45 players).
+  // Firestore is only checked to know which already have avatarBase64 saved.
+  const [avatarStatus, setAvatarStatus]     = useState({});       // { [id]: bool }
+  const [bulkLoading, setBulkLoading]       = useState(false);
   const [bulkRunning, setBulkRunning]       = useState(false);
   const [bulkDone, setBulkDone]             = useState(0);
   const [bulkTotal, setBulkTotal]           = useState(0);
   const [bulkCurrent, setBulkCurrent]       = useState('');
-  const [bulkLog, setBulkLog]               = useState([]);        // [{name, ok, err}]
+  const [bulkLog, setBulkLog]               = useState([]);
   const cancelRef                           = useRef(false);
 
-  useEffect(() => {
+  const refreshAvatarStatus = () => {
     setBulkLoading(true);
-    loadPlayers()
-      .then((ps) => setBulkPlayers(ps))
-      .catch(() => {})
+    seedPlayersIfNeeded()
+      .then(() => loadPlayers())
+      .then((ps) => {
+        const map = {};
+        ps.forEach((p) => { map[p.id] = !!p.avatarBase64; });
+        setAvatarStatus(map);
+      })
+      .catch(() => {
+        // Firestore unavailable — mark all as missing so bulk can still run
+        const map = {};
+        PLAYERS.forEach((p) => { map[p.id] = false; });
+        setAvatarStatus(map);
+      })
       .finally(() => setBulkLoading(false));
-  }, []);
+  };
 
-  const missingCount  = bulkPlayers.filter((p) => !p.avatarBase64).length;
-  const hasAvatarCount = bulkPlayers.length - missingCount;
+  useEffect(() => { refreshAvatarStatus(); }, []);
+
+  const hasAvatarCount = PLAYERS.filter((p) => avatarStatus[p.id]).length;
+  const missingCount   = PLAYERS.length - hasAvatarCount;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const slugify = (n) =>
@@ -92,8 +107,8 @@ export default function Admin() {
         setStatus(`✅ Avatar updated for "${playerId}"!`);
       }
 
-      // Refresh bulk list so counts update
-      loadPlayers().then(setBulkPlayers).catch(() => {});
+      // Refresh avatar status so counts update
+      setAvatarStatus((prev) => ({ ...prev, [playerId]: true }));
     } catch (err) {
       setStatus(`❌ Error: ${err.message}`);
     } finally {
@@ -104,8 +119,8 @@ export default function Admin() {
   // ── Bulk handler ─────────────────────────────────────────────────────────
   const handleBulkGenerate = async (onlyMissing = true) => {
     const queue = onlyMissing
-      ? bulkPlayers.filter((p) => !p.avatarBase64)
-      : [...bulkPlayers];
+      ? PLAYERS.filter((p) => !avatarStatus[p.id])
+      : [...PLAYERS];
 
     if (queue.length === 0) return;
 
@@ -129,8 +144,8 @@ export default function Admin() {
         done++;
         setBulkDone(done);
         setBulkLog((prev) => [{ name: player.name, ok: true }, ...prev]);
-        // Refresh player list so the count reflects new avatars
-        loadPlayers().then(setBulkPlayers).catch(() => {});
+        // Mark as done in local status map immediately
+        setAvatarStatus((prev) => ({ ...prev, [player.id]: true }));
       } catch (err) {
         done++;
         setBulkDone(done);
@@ -209,9 +224,9 @@ export default function Admin() {
                 <button
                   className="btn btn--ghost btn--sm"
                   onClick={() => handleBulkGenerate(false)}
-                  disabled={bulkLoading || bulkPlayers.length === 0}
+                  disabled={bulkLoading}
                 >
-                  ↺ Regenerate All {bulkPlayers.length}
+                  ↺ Regenerate All {PLAYERS.length}
                 </button>
               </>
             ) : (
