@@ -5,15 +5,12 @@ import BracketView from '../components/tournament/BracketView';
 import GameEngine from '../components/game/GameEngine';
 import { loadPlayers, seedPlayersIfNeeded, saveTournamentResult } from '../firebase/api';
 import { generateBracket, advanceWinner, getNextHumanMatch, getNextCpuMatch, isTournamentComplete, getChampion, getRoundName } from '../utils/bracketUtils';
-import { simulateCpuShot, calculateShotResult, DIFFICULTIES, getDifficulty } from '../utils/gameUtils';
+import { simulateCpuShot, calculateShotResult, calculateThreePointResult, DIFFICULTIES, getDifficulty, get3PTGamePct } from '../utils/gameUtils';
 
 import PLAYERS from '../data/players';
 
 const BRACKET_SIZES = [8, 16, 32];
 const MATCH_LENGTHS = [10, 20, 50, 100];
-
-// Steps: setup → pick-player → fill-bracket → bracket-view → playing → complete
-const STEPS = ['setup', 'pick-player', 'fill-bracket', 'bracket-view', 'playing', 'complete'];
 
 export default function Tournament() {
   const navigate = useNavigate();
@@ -24,17 +21,18 @@ export default function Tournament() {
   const [matchLength, setMatchLength] = useState(10);
   const [difficulty, setDifficulty] = useState('pro');
   const [isMultiplayer, setIsMultiplayer] = useState(false);
+  const [isThreePoint, setIsThreePoint] = useState(false);
   const [step, setStep] = useState('setup');
 
   // Player state
   const [players, setPlayers] = useState([]);
-  const [pickingFor, setPickingFor] = useState(1); // 1 or 2 in multiplayer
+  const [pickingFor, setPickingFor] = useState(1);
   const [humanPlayer1, setHumanPlayer1] = useState(null);
   const [humanPlayer2, setHumanPlayer2] = useState(null);
 
   // Bracket state
   const [bracket, setBracket] = useState(null);
-  const [currentMatch, setCurrentMatch] = useState(null); // { roundIdx, matchIdx, match }
+  const [currentMatch, setCurrentMatch] = useState(null);
 
   useEffect(() => {
     seedPlayersIfNeeded()
@@ -79,27 +77,39 @@ export default function Tournament() {
     while (cpuMatch) {
       const { roundIdx, matchIdx, match } = cpuMatch;
       let score1 = 0, score2 = 0;
-      for (let i = 0; i < matchLength; i++) {
-        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult, cpuSpread);
-        if (calculateShotResult(h1, v1, match.player1.ftPct, zoneMult).madeShot) score1++;
-        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult, cpuSpread);
-        if (calculateShotResult(h2, v2, match.player2.ftPct, zoneMult).madeShot) score2++;
-      }
+
+      const simPlayerShots = (player, n) => {
+        let made = 0;
+        const gamePct = isThreePoint
+          ? get3PTGamePct(player.threePct ?? 33)
+          : player.ftPct;
+        for (let i = 0; i < n; i++) {
+          const { hStop: h, vStop: v } = simulateCpuShot(gamePct, zoneMult, cpuSpread);
+          if (isThreePoint) {
+            const rVal = Math.min(99, Math.max(1, 28 * zoneMult * (0.5 + (Math.random() - 0.5) * 1.4 * cpuSpread)));
+            if (calculateThreePointResult(h, v, rVal, zoneMult, gamePct).madeShot) made++;
+          } else {
+            if (calculateShotResult(h, v, gamePct, zoneMult).madeShot) made++;
+          }
+        }
+        return made;
+      };
+
+      score1 = simPlayerShots(match.player1, matchLength);
+      score2 = simPlayerShots(match.player2, matchLength);
+
       // Tiebreaker
       while (score1 === score2) {
-        const { hStop: h1, vStop: v1 } = simulateCpuShot(match.player1.ftPct, zoneMult, cpuSpread);
-        const { hStop: h2, vStop: v2 } = simulateCpuShot(match.player2.ftPct, zoneMult, cpuSpread);
-        const m1 = calculateShotResult(h1, v1, match.player1.ftPct, zoneMult).madeShot;
-        const m2 = calculateShotResult(h2, v2, match.player2.ftPct, zoneMult).madeShot;
-        if (m1 && !m2) score1++;
-        else if (!m1 && m2) score2++;
+        score1 += simPlayerShots(match.player1, 1);
+        score2 += simPlayerShots(match.player2, 1);
       }
+
       const winner = score1 > score2 ? match.player1 : match.player2;
       b = advanceWinner(b, roundIdx, matchIdx, winner, score1, score2);
       cpuMatch = getNextCpuMatch(b, [humanPlayer1?.id, humanPlayer2?.id].filter(Boolean));
     }
     return b;
-  }, [matchLength, difficulty, humanPlayer1, humanPlayer2]);
+  }, [matchLength, difficulty, isThreePoint, humanPlayer1, humanPlayer2]);
 
   const handleStartBracket = () => {
     const simulated = simulateCpuMatches(bracket);
@@ -115,6 +125,7 @@ export default function Tournament() {
       saveTournamentResult(username, {
         bracketSize,
         matchLength,
+        isThreePoint,
         champion: champion?.id,
         bracket: JSON.parse(JSON.stringify(b)),
       }).catch(() => {});
@@ -125,7 +136,6 @@ export default function Tournament() {
       setCurrentMatch(next);
       setStep('playing');
     } else {
-      // No human matches left? Simulate remaining and check completion
       const final = simulateCpuMatches(b);
       setBracket(final);
       if (isTournamentComplete(final)) {
@@ -137,15 +147,12 @@ export default function Tournament() {
   const handleMatchComplete = useCallback(({ scores, winner }) => {
     if (!currentMatch) return;
     const { roundIdx, matchIdx, match } = currentMatch;
-    // winner from useGame is now a raw player object (.player already extracted)
     const actualWinner = winner || (scores[0] >= scores[1] ? match.player1 : match.player2);
     const updated = advanceWinner(bracket, roundIdx, matchIdx, actualWinner, scores[0], scores[1]);
 
-    // Simulate remaining CPU matches for this round progression
     const simulated = simulateCpuMatches(updated);
     setBracket(simulated);
     setCurrentMatch(null);
-    // Return to bracket view so the player can see results before next game
     setStep('bracket-view');
   }, [currentMatch, bracket, simulateCpuMatches]);
 
@@ -159,6 +166,20 @@ export default function Tournament() {
           <h1 className="page__title">🏆 Playoff Tournament</h1>
         </div>
         <div className="setup-card">
+          <div className="setup-row">
+            <label className="setup-label">Challenge Type</label>
+            <div className="setup-options">
+              <button
+                className={`btn btn--option ${!isThreePoint ? 'btn--option-active' : ''}`}
+                onClick={() => setIsThreePoint(false)}
+              >🎯 Free Throw</button>
+              <button
+                className={`btn btn--option ${isThreePoint ? 'btn--option-active' : ''}`}
+                onClick={() => setIsThreePoint(true)}
+              >🎳 3-Point</button>
+            </div>
+          </div>
+
           <div className="setup-row">
             <label className="setup-label">Bracket Size</label>
             <div className="setup-options">
@@ -180,7 +201,7 @@ export default function Tournament() {
                   key={l}
                   className={`btn btn--option ${matchLength === l ? 'btn--option-active' : ''}`}
                   onClick={() => setMatchLength(l)}
-                >{l} FTs</button>
+                >{l} {isThreePoint ? '3s' : 'FTs'}</button>
               ))}
             </div>
           </div>
@@ -209,6 +230,21 @@ export default function Tournament() {
                 className={`btn btn--option ${isMultiplayer ? 'btn--option-active' : ''}`}
                 onClick={() => setIsMultiplayer(true)}
               >2 Players</button>
+            </div>
+          </div>
+
+          <div className="setup-row">
+            <label className="setup-label">Format</label>
+            <div className="setup-options">
+              <button className="btn btn--option btn--option-active" disabled>
+                1v1 Individual
+              </button>
+              <button
+                className="btn btn--option"
+                onClick={() => navigate('/team-playoff')}
+              >
+                5v5 Teams →
+              </button>
             </div>
           </div>
 
@@ -275,7 +311,7 @@ export default function Tournament() {
       <div className="page page--bracket">
         <div className="page__header">
           <button className="btn btn--ghost btn--sm" onClick={() => navigate('/')}>✕ Exit</button>
-          <h1 className="page__title">🏆 Bracket</h1>
+          <h1 className="page__title">🏆 Bracket {isThreePoint ? '· 3PT' : '· FT'}</h1>
         </div>
         <BracketView bracket={bracket} humanPlayerIds={humanIds} />
         {nextHuman && (
@@ -316,6 +352,7 @@ export default function Tournament() {
           players={gamePlayers}
           totalShots={matchLength}
           difficulty={difficulty}
+          isThreePoint={isThreePoint}
           onComplete={handleMatchComplete}
           onExit={() => setStep('bracket-view')}
         />
@@ -331,7 +368,11 @@ export default function Tournament() {
           <div className="complete-card__trophy">🏆</div>
           <h1 className="complete-card__title">TOURNAMENT CHAMPION!</h1>
           <div className="complete-card__winner">{champion?.name}</div>
-          <div className="complete-card__ft">{champion?.ftPct}% FT Career</div>
+          <div className="complete-card__ft">
+            {isThreePoint
+              ? `${champion?.threePct}% 3PT Career`
+              : `${champion?.ftPct}% FT Career`}
+          </div>
           <div className="complete-card__actions">
             <button className="btn btn--primary" onClick={() => { setBracket(null); setStep('setup'); }}>
               Play Again

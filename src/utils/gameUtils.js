@@ -47,6 +47,16 @@ export function getZoneRadii(ftPct, zoneMult = 1.0) {
 }
 
 /**
+ * Map a player's real career 3-point % (roughly 5–43%) to the game-mechanics
+ * scale (50–95) that drives timing-bar speed and zone sizing.
+ * A 43% shooter (Curry) → 95 (easiest), a 5% shooter (Shaq) → 50 (hardest).
+ */
+export function get3PTGamePct(threePct) {
+  const t = Math.min(1, Math.max(0, (threePct - 5) / 38));
+  return Math.round(50 + t * 45);
+}
+
+/**
  * Triangle-wave position 0–100 for elapsed time.
  */
 export function getBarPosition(elapsedMs, periodMs) {
@@ -73,17 +83,19 @@ export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0) {
 /**
  * 3-pointer result from H, V, and radial (R) stop positions.
  * R = 0 → center (perfect), R = 100 → rim (miss).
+ * shotPct = game-mechanics value (use get3PTGamePct(player.threePct)) so
+ * better 3PT shooters get wider H/V zones, matching their real ability.
  */
-export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0) {
+export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0, shotPct = 75) {
   const hDev = Math.abs(hStop - 50);
   const vDev = Math.abs(vStop - 50);
-  // Radial: 0 is best, 100 is worst
-  const rDev = rStop;
+  const rDev = rStop; // 0 = perfect, 100 = miss
 
-  const makeHV    = 14 * zoneMult;   // H/V zone (fixed, not player-scaled)
-  const perfectHV = 5  * zoneMult;
-  const makeR     = 28 * zoneMult;   // radial zone
-  const perfectR  = 10 * zoneMult;
+  // H/V zones scale with player 3PT ability (same as FT zones)
+  const { makeRadius: makeHV, perfectRadius: perfectHV } = getZoneRadii(shotPct, zoneMult);
+  // Radial zone: same for all players, only difficulty (zoneMult) scales it
+  const makeR    = 28 * zoneMult;
+  const perfectR = 10 * zoneMult;
 
   let result;
   if (hDev <= perfectHV && vDev <= perfectHV && rDev <= perfectR) result = 'perfect';

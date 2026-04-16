@@ -179,7 +179,7 @@ export default function Admin() {
           ) : (
             <div className="admin-bulk-info">
               <span className="admin-bulk-stat admin-bulk-stat--ok">
-                ✅ {hasAvatarCount} / {bulkPlayers.length} have avatars
+                ✅ {hasAvatarCount} / {PLAYERS.length} have avatars
               </span>
               {missingCount > 0 && (
                 <span className="admin-bulk-stat admin-bulk-stat--missing">

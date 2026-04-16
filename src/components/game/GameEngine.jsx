@@ -17,7 +17,7 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
     hStop, vStop, rStop, lastResult, scores, shotHistory, suddenDeath, sdRound,
     startShot, stopHBar, stopVBar, stopHoopBar,
     advanceToVBar, advanceToHoopBar,
-    takeCpuShot, ftPct, speedMult, zoneMult,
+    takeCpuShot, ftPct, displayPct, speedMult, zoneMult,
   } = game;
 
   const hBarRef    = useRef(null);
@@ -103,7 +103,9 @@ export default function GameEngine({ players, totalShots, onComplete, onExit, di
             onPointerDown={(e) => { e.stopPropagation(); onExit(); }}
           >✕ Exit</button>
           <div className="game-engine__shooter-name">{playerLabel}</div>
-          <div className="game-engine__player-ft">{ftPct}% FT</div>
+          <div className="game-engine__player-ft">
+            {displayPct ?? ftPct}% {isThreePoint ? '3PT' : 'FT'}
+          </div>
         </div>
 
         {/* Scoreboard */}

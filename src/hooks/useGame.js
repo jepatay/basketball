@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { calculateShotResult, calculateThreePointResult, simulateCpuShot, getDifficulty } from '../utils/gameUtils';
+import { calculateShotResult, calculateThreePointResult, simulateCpuShot, getDifficulty, get3PTGamePct } from '../utils/gameUtils';
 import { playSwish, playClank, playPerfect, playTap, resumeAudio } from '../utils/audioUtils';
 
 /**
@@ -30,7 +30,12 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
   const resultTimerRef = useRef(null);
 
   const currentPlayer = players[currentPlayerIdx];
-  const ftPct = currentPlayer?.player?.ftPct ?? 75;
+  // displayPct = the real career % to show in UI (FT% or 3PT%)
+  const displayPct = isThreePoint
+    ? (currentPlayer?.player?.threePct ?? 33)
+    : (currentPlayer?.player?.ftPct ?? 75);
+  // ftPct = game-mechanics value (drives bar speed & zone sizing)
+  const ftPct = isThreePoint ? get3PTGamePct(displayPct) : displayPct;
 
   // ── Stop horizontal bar ──────────────────────────────────────────────────
 
@@ -71,7 +76,7 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
     playTap();
     setRStop(position);
 
-    const result = calculateThreePointResult(hStopRef.current, vStopRef.current, position, zoneMult);
+    const result = calculateThreePointResult(hStopRef.current, vStopRef.current, position, zoneMult, ftPct);
     finishShot(result, null, position);
   }, [phase, zoneMult]);
 
@@ -122,7 +127,7 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
           28 * zoneMult * (0.5 + (Math.random() - 0.5) * 1.4 * cpuSpread)
         ));
         setRStop(rVal);
-        result = calculateThreePointResult(h, v, rVal, zoneMult);
+        result = calculateThreePointResult(h, v, rVal, zoneMult, ftPct);
       } else {
         result = calculateShotResult(h, v, ftPct, zoneMult);
       }
@@ -255,7 +260,7 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
     startShot, stopHBar, stopVBar, stopHoopBar,
     advanceToVBar, advanceToHoopBar,
     takeCpuShot,
-    ftPct, speedMult, zoneMult,
+    ftPct, displayPct, speedMult, zoneMult,
     isThreePoint,
   };
 }

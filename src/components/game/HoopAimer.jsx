@@ -5,11 +5,16 @@ import { getBarPosition } from '../../utils/gameUtils';
  * HoopAimer — radial 3rd-dimension timing for 3-point shots.
  *
  * The ball indicator oscillates radially (center ↔ rim) for scoring,
- * AND simultaneously drifts in a random direction that keeps changing
- * smoothly — 360° unpredictable movement.
+ * AND simultaneously whips around in a chaotic 360° angular walk.
+ *
+ * Chaos features:
+ *  - Large continuous random velocity kicks
+ *  - Occasional "burst" events that suddenly reverse or spike velocity
+ *  - Variable radial period (jitter on in/out speed)
+ *  - Minimum spin so it never slows to a crawl
  *
  * Score = radial distance from center when player taps (0 = perfect, 100 = miss).
- * The angle at the moment of stopping does NOT affect the score, only the radius does.
+ * The angle at the moment of stopping does NOT affect the score.
  */
 const HoopAimer = forwardRef(function HoopAimer(
   { zoneMult = 1.0, isActive = false, stoppedAt = null, onStop },
@@ -19,14 +24,16 @@ const HoopAimer = forwardRef(function HoopAimer(
   const startTimeRef    = useRef(null);
   const prevTsRef       = useRef(null);
   const positionRef     = useRef(0);
-  const angleRef        = useRef(Math.random() * Math.PI * 2); // random start angle
-  const angleVelRef     = useRef((Math.random() - 0.5) * 4);   // rad/s, random initial spin
-  const stopAngleRef    = useRef(0);                            // angle frozen at stop
+  const angleRef        = useRef(Math.random() * Math.PI * 2);
+  const angleVelRef     = useRef((Math.random() - 0.5) * 10);
+  const stopAngleRef    = useRef(0);
+  const periodJitterRef = useRef(0);
+  const nextBurstRef    = useRef(0.4 + Math.random() * 0.8);
 
   const [displayPos, setDisplayPos] = useState(0);
   const [displayAngle, setDisplayAngle] = useState(() => Math.random() * Math.PI * 2);
 
-  const periodMs = 900;
+  const basePeriodMs = 900;
 
   const animate = useCallback((ts) => {
     if (!startTimeRef.current) {
@@ -34,21 +41,45 @@ const HoopAimer = forwardRef(function HoopAimer(
       prevTsRef.current = ts;
     }
 
-    const dt = Math.min((ts - prevTsRef.current) / 1000, 0.05); // seconds, capped at 50ms
+    const dt = Math.min((ts - prevTsRef.current) / 1000, 0.05);
     prevTsRef.current = ts;
 
-    // Radial position: triangle wave 0→100→0
-    const pos = getBarPosition(ts - startTimeRef.current, periodMs);
+    // ── Radial position with jittered period ────────────────────────────────
+    if (Math.random() < 0.008) {
+      periodJitterRef.current = (Math.random() - 0.5) * 500;
+    }
+    const effectivePeriod = Math.max(550, basePeriodMs + periodJitterRef.current);
+    const pos = getBarPosition(ts - startTimeRef.current, effectivePeriod);
     positionRef.current = pos;
 
-    // Angular random walk: velocity drifts randomly each frame
-    // Add a random nudge, then clamp velocity so it stays lively but not insane
-    angleVelRef.current += (Math.random() - 0.5) * 12 * dt;
-    angleVelRef.current = Math.max(-7, Math.min(7, angleVelRef.current));
-    // Bias back toward non-zero speed so it never fully stops spinning
-    if (Math.abs(angleVelRef.current) < 1.5) {
-      angleVelRef.current += Math.sign(angleVelRef.current || 1) * 1.5 * dt;
+    // ── Angular chaos ────────────────────────────────────────────────────────
+    angleVelRef.current += (Math.random() - 0.5) * 40 * dt;
+
+    // Countdown to next chaos burst
+    nextBurstRef.current -= dt;
+    if (nextBurstRef.current <= 0) {
+      const burstType = Math.random();
+      if (burstType < 0.4) {
+        // Direction reversal with speed boost
+        angleVelRef.current = -angleVelRef.current * (1.2 + Math.random() * 0.8);
+      } else if (burstType < 0.7) {
+        // Large random spike
+        angleVelRef.current += (Math.random() - 0.5) * 18;
+      } else {
+        // Sudden stop + restart in random direction
+        angleVelRef.current = (Math.random() < 0.5 ? 1 : -1) * (4 + Math.random() * 8);
+      }
+      nextBurstRef.current = 0.3 + Math.random() * 0.9;
     }
+
+    // Cap at ±14 rad/s
+    angleVelRef.current = Math.max(-14, Math.min(14, angleVelRef.current));
+
+    // Never stall
+    if (Math.abs(angleVelRef.current) < 2.5) {
+      angleVelRef.current += Math.sign(angleVelRef.current || 1) * 4 * dt;
+    }
+
     angleRef.current += angleVelRef.current * dt;
 
     setDisplayPos(pos);
@@ -84,13 +115,9 @@ const HoopAimer = forwardRef(function HoopAimer(
   const makeR    = maxR * 0.28 * zoneMult;
   const perfectR = maxR * 0.10 * zoneMult;
 
-  // Indicator position in polar → cartesian
   const indicatorR = (currentPos / 100) * maxR;
   const ix = cx + indicatorR * Math.cos(currentAngle);
   const iy = cy + indicatorR * Math.sin(currentAngle);
-
-  // Trailing ghost dots to show recent path (visual only)
-  const trailCount = 4;
 
   const inPerfect = currentPos <= (perfectR / maxR) * 100;
   const inMake    = currentPos <= (makeR / maxR) * 100;

@@ -46,7 +46,7 @@ export default function Home() {
         <button className="btn btn--mode btn--tournament" onClick={() => go('/tournament')}>
           <span className="btn__icon">🏆</span>
           <span className="btn__text">PLAYOFF TOURNAMENT</span>
-          <span className="btn__sub">Bracket of 8–32 players</span>
+          <span className="btn__sub">FT or 3PT · Bracket of 8–32 players</span>
         </button>
 
         <button className="btn btn--mode btn--century" onClick={() => go('/century')}>
@@ -61,10 +61,10 @@ export default function Home() {
           <span className="btn__sub">Two players, same device</span>
         </button>
 
-        <button className="btn btn--mode btn--threepoint" onClick={() => go('/threepoint')}>
-          <span className="btn__icon">🎳</span>
-          <span className="btn__text">3-POINT CONTEST</span>
-          <span className="btn__sub">3 dimensions — arc, left/right, depth</span>
+        <button className="btn btn--mode btn--teamplayoff" onClick={() => go('/team-playoff')}>
+          <span className="btn__icon">👥</span>
+          <span className="btn__text">5v5 TEAM PLAYOFF</span>
+          <span className="btn__sub">Teams of 5 · Up to 8 teams · Bracket</span>
         </button>
       </div>
 
