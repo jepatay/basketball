@@ -648,6 +648,7 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
 .shot-result--perfect .shot-result__label { color: var(--gold); text-shadow: 0 0 30px var(--gold); }
 .shot-result--good    .shot-result__label { color: var(--teal); }
 .shot-result--miss    .shot-result__label { color: var(--red); }
+.shot-result--rimout  .shot-result__label { color: #FF9A3C; text-shadow: 0 0 20px rgba(255,154,60,0.6); }
 
 /* ── Bracket ──────────────────────────────────────────────────────────────── */
 .bracket { padding: 12px; overflow-x: auto; }

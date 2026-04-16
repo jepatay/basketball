@@ -8,9 +8,6 @@
  * speedMult: multiplier on bar period (1.0 = Rookie baseline; 0.6^n = each step 40% faster)
  * zoneMult:  multiplier on make-zone radius (Rookie=full, Legend=40%)
  * cpuSpread: extra sigma spread for CPU shots (1.0 = realistic; >1 = CPU misses more)
- *
- * Zone widths relative to Rookie:
- *   Rookie 2 units → Pro 1.5 → All-Star 1.2 → Legend 0.8
  */
 export const DIFFICULTIES = [
   { id: 'rookie',  label: 'Rookie',   speedMult: 1.0,   zoneMult: 1.0,  cpuSpread: 0.85 },
@@ -38,11 +35,22 @@ export function getBarPeriodMs(ftPct, speedMult = 1.0) {
 
 /**
  * Zone radii on 0–100 bar scale (center = 50).
+ *
+ * Layer 1 — Exponential zone sizing:
+ *   makeRadius = 22 * (ftPct/100)³ * zoneMult
+ *
+ * This creates a dramatic exponential difference between players:
+ *   Curry  91%: ~16.6  (window ~330 ms at Rookie)
+ *   Jordan 84%: ~13.1
+ *   LeBron 73%: ~8.6   (window ~170 ms at Rookie)
+ *   Shaq   52%: ~3.1   (window ~62 ms at Rookie)
+ *
+ * A player at 91% has ~2× the zone of a player at 73% (3× the area).
  */
 export function getZoneRadii(ftPct, zoneMult = 1.0) {
-  const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
-  const makeRadius    = (9 + t * 8) * zoneMult;
-  const perfectRadius = Math.max(2.5, 3.5 * zoneMult);
+  const p = Math.min(1, Math.max(0, ftPct / 100));
+  const makeRadius    = 22 * Math.pow(p, 3) * zoneMult;
+  const perfectRadius = Math.max(1.5, 7 * Math.pow(p, 3) * zoneMult);
   return { makeRadius, perfectRadius };
 }
 
@@ -66,58 +74,104 @@ export function getBarPosition(elapsedMs, periodMs) {
 
 /**
  * Free-throw shot result from H and V stop positions.
+ *
+ * Layer 2 — Random variance (applyVariance = true for human shots only):
+ *   Perfect hit: miss with probability (1 − ftPct/100)
+ *   Good hit:    miss with probability min(0.94, (1 − ftPct/100) × 2)
+ *   Zone miss:   always miss
+ *
+ * This means even Curry misses ~9% of perfect shots; LeBron misses ~27%.
+ * CPU shots use applyVariance=false so their accuracy stays calibrated.
+ *
+ * Returns:
+ *   result   — actual outcome for scoring ('perfect'|'good'|'miss')
+ *   aimZone  — where the player aimed ('perfect'|'good'|'miss')
+ *              differs from result when variance causes a rimout
+ *   madeShot — true if the ball goes in
  */
-export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0) {
+export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0, applyVariance = false) {
   const hDev = Math.abs(hStop - 50);
   const vDev = Math.abs(vStop - 50);
   const { makeRadius, perfectRadius } = getZoneRadii(ftPct, zoneMult);
 
-  let result;
-  if (hDev <= perfectRadius && vDev <= perfectRadius) result = 'perfect';
-  else if (hDev <= makeRadius && vDev <= makeRadius) result = 'good';
-  else result = 'miss';
+  let aimZone;
+  if (hDev <= perfectRadius && vDev <= perfectRadius) aimZone = 'perfect';
+  else if (hDev <= makeRadius && vDev <= makeRadius)  aimZone = 'good';
+  else                                                 aimZone = 'miss';
 
-  return { result, hDev, vDev, madeShot: result !== 'miss' };
+  let madeShot;
+  if (aimZone === 'miss') {
+    madeShot = false;
+  } else if (applyVariance) {
+    const missChance = 1 - ftPct / 100;
+    madeShot = aimZone === 'perfect'
+      ? Math.random() >= missChance
+      : Math.random() >= Math.min(0.94, missChance * 2);
+  } else {
+    madeShot = true;
+  }
+
+  return {
+    result: madeShot ? aimZone : 'miss',
+    aimZone,
+    hDev, vDev,
+    madeShot,
+  };
 }
 
 /**
  * 3-pointer result from H, V, and radial (R) stop positions.
  * R = 0 → center (perfect), R = 100 → rim (miss).
  * shotPct = game-mechanics value (use get3PTGamePct(player.threePct)) so
- * better 3PT shooters get wider H/V zones, matching their real ability.
+ * better 3PT shooters get wider H/V zones.
+ * applyVariance = true for human shots (see calculateShotResult for doc).
  */
-export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0, shotPct = 75) {
+export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0, shotPct = 75, applyVariance = false) {
   const hDev = Math.abs(hStop - 50);
   const vDev = Math.abs(vStop - 50);
   const rDev = rStop; // 0 = perfect, 100 = miss
 
-  // H/V zones scale with player 3PT ability (same as FT zones)
+  // H/V zones scale with player 3PT ability
   const { makeRadius: makeHV, perfectRadius: perfectHV } = getZoneRadii(shotPct, zoneMult);
-  // Radial zone: same for all players, only difficulty (zoneMult) scales it
+  // Radial zone: same for all players, only difficulty scales it
   const makeR    = 28 * zoneMult;
   const perfectR = 10 * zoneMult;
 
-  let result;
-  if (hDev <= perfectHV && vDev <= perfectHV && rDev <= perfectR) result = 'perfect';
-  else if (hDev <= makeHV && vDev <= makeHV && rDev <= makeR)     result = 'good';
-  else result = 'miss';
+  let aimZone;
+  if (hDev <= perfectHV && vDev <= perfectHV && rDev <= perfectR) aimZone = 'perfect';
+  else if (hDev <= makeHV && vDev <= makeHV && rDev <= makeR)     aimZone = 'good';
+  else                                                              aimZone = 'miss';
 
-  return { result, hDev, vDev, rDev, madeShot: result !== 'miss' };
+  let madeShot;
+  if (aimZone === 'miss') {
+    madeShot = false;
+  } else if (applyVariance) {
+    const missChance = 1 - shotPct / 100;
+    madeShot = aimZone === 'perfect'
+      ? Math.random() >= missChance
+      : Math.random() >= Math.min(0.94, missChance * 2);
+  } else {
+    madeShot = true;
+  }
+
+  return {
+    result: madeShot ? aimZone : 'miss',
+    aimZone,
+    hDev, vDev, rDev,
+    madeShot,
+  };
 }
 
 /**
  * CPU shot simulation.
  *
  * Calibrated so make rate ≈ player's real ftPct at cpuSpread=1.0.
+ * The sigma formula depends only on t=(ftPct−50)/45, not on the absolute
+ * makeRadius value — so it self-calibrates regardless of zone formula.
  *
- * The key fix over previous version: the Box-Muller sum of 4 uniforms has
- * std-dev 0.577, not 1.0.  sigma is divided by 0.577 to give the correct
- * actual standard deviation.
+ *   sigma_param = makeRadius * (1.61 − t × 0.81)
  *
- *   sigma_target = makeRadius * (0.93 − t × 0.47)
- *   sigma_param  = sigma_target / 0.577  = makeRadius * (1.61 − t × 0.81)
- *
- * cpuSpread > 1 makes the CPU less accurate (harder difficulty).
+ * CPU shots do NOT apply Layer 2 variance (applyVariance=false in callers).
  */
 export function simulateCpuShot(ftPct, zoneMult = 1.0, cpuSpread = 1.0) {
   const { makeRadius } = getZoneRadii(ftPct, zoneMult);

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { calculateShotResult, calculateThreePointResult, simulateCpuShot, getDifficulty, get3PTGamePct } from '../utils/gameUtils';
 import { playSwish, playClank, playPerfect, playTap, resumeAudio } from '../utils/audioUtils';
+import PLAYERS from '../data/players';
 
 /**
  * Core game engine hook.
@@ -30,9 +31,12 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
   const resultTimerRef = useRef(null);
 
   const currentPlayer = players[currentPlayerIdx];
+  // Resolve threePct: Firestore players may not have it yet — fall back to static data
+  const _staticPlayer = PLAYERS.find((p) => p.id === currentPlayer?.player?.id);
+  const _threePct = currentPlayer?.player?.threePct ?? _staticPlayer?.threePct ?? 33;
   // displayPct = the real career % to show in UI (FT% or 3PT%)
   const displayPct = isThreePoint
-    ? (currentPlayer?.player?.threePct ?? 33)
+    ? _threePct
     : (currentPlayer?.player?.ftPct ?? 75);
   // ftPct = game-mechanics value (drives bar speed & zone sizing)
   const ftPct = isThreePoint ? get3PTGamePct(displayPct) : displayPct;
@@ -63,8 +67,8 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
       return;
     }
 
-    // Free throw: calculate result now
-    const result = calculateShotResult(hStopRef.current, position, ftPct, zoneMult);
+    // Free throw: calculate result now (human shot → applyVariance = true)
+    const result = calculateShotResult(hStopRef.current, position, ftPct, zoneMult, true);
     finishShot(result, position);
   }, [phase, ftPct, zoneMult, isThreePoint]);
 
@@ -76,7 +80,8 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
     playTap();
     setRStop(position);
 
-    const result = calculateThreePointResult(hStopRef.current, vStopRef.current, position, zoneMult, ftPct);
+    // 3PT human shot → applyVariance = true
+    const result = calculateThreePointResult(hStopRef.current, vStopRef.current, position, zoneMult, ftPct, true);
     finishShot(result, null, position);
   }, [phase, zoneMult]);
 
@@ -86,7 +91,7 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
     setLastResult(result);
     setPhase('result');
 
-    if (result.result === 'perfect') playPerfect();
+    if (result.madeShot && result.result === 'perfect') playPerfect();
     else if (result.madeShot) playSwish();
     else playClank();
 
