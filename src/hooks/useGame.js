@@ -127,12 +127,26 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
 
       let result;
       if (isThreePoint) {
-        // CPU also needs a radial shot; simulate it with same spread
-        const rVal = Math.min(99, Math.max(1,
-          28 * zoneMult * (0.5 + (Math.random() - 0.5) * 1.4 * cpuSpread)
-        ));
-        setRStop(rVal);
-        result = calculateThreePointResult(h, v, rVal, zoneMult, ftPct);
+        // CPU 3PT accuracy must use the REAL career threePct, not the game-scaled value.
+        // get3PTGamePct inflates (e.g. Giannis 30% → 80 game pts) which is only for
+        // human timing-bar sizing. For CPU probability we use the actual career %.
+        const real3PtPct = currentPlayer.player?.threePct
+          ?? PLAYERS.find((p) => p.id === currentPlayer.player?.id)?.threePct
+          ?? 33;
+        const madeShot = Math.random() < real3PtPct / 100;
+        // Visual rStop: inside zone if made, outside if missed
+        const makeZoneR = 28 * zoneMult;
+        const rVal = madeShot
+          ? Math.random() * makeZoneR * 0.7            // comfortably inside make zone
+          : makeZoneR * 1.1 + Math.random() * 50;      // clearly outside
+        const clampedR = Math.min(99, Math.max(1, rVal));
+        setRStop(clampedR);
+        result = {
+          result: madeShot ? 'good' : 'miss',
+          aimZone: madeShot ? 'good' : 'miss',
+          hDev: Math.abs(h - 50), vDev: Math.abs(v - 50), rDev: clampedR,
+          madeShot,
+        };
       } else {
         result = calculateShotResult(h, v, ftPct, zoneMult);
       }
@@ -140,7 +154,7 @@ export function useGame({ players, totalShots, onComplete, difficulty = 'rookie'
       setLastResult(result);
       setPhase('result');
 
-      if (result.result === 'perfect') playPerfect();
+      if (result.madeShot && result.result === 'perfect') playPerfect();
       else if (result.madeShot) playSwish();
       else playClank();
 

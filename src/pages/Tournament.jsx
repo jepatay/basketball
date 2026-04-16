@@ -5,7 +5,7 @@ import BracketView from '../components/tournament/BracketView';
 import GameEngine from '../components/game/GameEngine';
 import { loadPlayers, seedPlayersIfNeeded, saveTournamentResult } from '../firebase/api';
 import { generateBracket, advanceWinner, getNextHumanMatch, getNextCpuMatch, isTournamentComplete, getChampion, getRoundName } from '../utils/bracketUtils';
-import { simulateCpuShot, calculateShotResult, calculateThreePointResult, DIFFICULTIES, getDifficulty, get3PTGamePct } from '../utils/gameUtils';
+import { simulateCpuShot, calculateShotResult, DIFFICULTIES, getDifficulty } from '../utils/gameUtils';
 
 import PLAYERS from '../data/players';
 
@@ -80,16 +80,19 @@ export default function Tournament() {
 
       const simPlayerShots = (player, n) => {
         let made = 0;
-        const gamePct = isThreePoint
-          ? get3PTGamePct(player.threePct ?? 33)
-          : player.ftPct;
-        for (let i = 0; i < n; i++) {
-          const { hStop: h, vStop: v } = simulateCpuShot(gamePct, zoneMult, cpuSpread);
-          if (isThreePoint) {
-            const rVal = Math.min(99, Math.max(1, 28 * zoneMult * (0.5 + (Math.random() - 0.5) * 1.4 * cpuSpread)));
-            if (calculateThreePointResult(h, v, rVal, zoneMult, gamePct).madeShot) made++;
-          } else {
-            if (calculateShotResult(h, v, gamePct, zoneMult).madeShot) made++;
+        if (isThreePoint) {
+          // For 3PT CPU simulation use the REAL career threePct directly.
+          // get3PTGamePct is only for human timing-bar scaling; applying it here
+          // gives every player ~80%+ accuracy (e.g. Giannis 30% → 80 game pts).
+          const staticP = PLAYERS.find((p) => p.id === player.id);
+          const real3PtPct = player.threePct ?? staticP?.threePct ?? 33;
+          for (let i = 0; i < n; i++) {
+            if (Math.random() < real3PtPct / 100) made++;
+          }
+        } else {
+          for (let i = 0; i < n; i++) {
+            const { hStop: h, vStop: v } = simulateCpuShot(player.ftPct, zoneMult, cpuSpread);
+            if (calculateShotResult(h, v, player.ftPct, zoneMult).madeShot) made++;
           }
         }
         return made;
@@ -272,6 +275,7 @@ export default function Tournament() {
           selectedId={pickingFor === 1 ? humanPlayer1?.id : humanPlayer2?.id}
           onSelect={handlePlayerPick}
           exclude={alreadyPicked.filter((_, i) => (pickingFor === 1 ? i !== 0 : i !== 1))}
+          isThreePoint={isThreePoint}
         />
       </div>
     );

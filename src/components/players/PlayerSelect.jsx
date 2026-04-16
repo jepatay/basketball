@@ -18,7 +18,7 @@ const ERA_LABELS = {
  *   title:          heading text
  *   exclude:        array of player IDs to hide (already selected)
  */
-export default function PlayerSelect({ players = [], onSelect, selectedId, title = 'Choose Your Player', exclude = [] }) {
+export default function PlayerSelect({ players = [], onSelect, selectedId, title = 'Choose Your Player', exclude = [], isThreePoint = false }) {
   const [activeTags, setActiveTags] = useState([]);
   const [search, setSearch] = useState('');
 
@@ -95,6 +95,7 @@ export default function PlayerSelect({ players = [], onSelect, selectedId, title
                     player={p}
                     selected={p.id === selectedId}
                     onClick={onSelect}
+                    isThreePoint={isThreePoint}
                   />
                 ))}
               </div>
