@@ -6,11 +6,11 @@ import { resizeBase64Image } from '../utils/imageUtils';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
-async function generateAndSave(playerName, playerId) {
+async function generateAndSave(playerName, playerId, playerAttrs = {}) {
   const res = await fetch(`${API_BASE}/api/generate-avatar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerName }),
+    body: JSON.stringify({ playerName, ...playerAttrs }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
@@ -93,12 +93,12 @@ export default function Admin() {
 
     try {
       setStatus('Resizing image…');
-      const imageBase64 = await generateAndSave(name.trim(), playerId);
+      const era = selectedTags.includes('nextgen') ? 'nextgen'
+        : selectedTags.includes('modern') ? 'modern' : 'legends';
+      const imageBase64 = await generateAndSave(name.trim(), playerId, { era, tags: selectedTags, ftPct: Number(ftPct) });
       setPreviewSrc(`data:image/jpeg;base64,${imageBase64}`);
 
       if (!regen) {
-        const era = selectedTags.includes('nextgen') ? 'nextgen'
-          : selectedTags.includes('modern') ? 'modern' : 'legends';
         await addPlayer(playerId, {
           name: name.trim(), ftPct: Number(ftPct), era, tags: selectedTags,
         }, imageBase64);
@@ -140,7 +140,7 @@ export default function Admin() {
 
       setBulkCurrent(`Generating ${player.name}…`);
       try {
-        await generateAndSave(player.name, player.id);
+        await generateAndSave(player.name, player.id, { era: player.era, tags: player.tags, ftPct: player.ftPct });
         done++;
         setBulkDone(done);
         setBulkLog((prev) => [{ name: player.name, ok: true }, ...prev]);

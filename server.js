@@ -121,9 +121,34 @@ app.use((req, res, next) => {
 // ── Serve React build ────────────────────────────────────────────────────────
 app.use(express.static(distPath));
 
+// ── Build avatar prompt from player attributes (no real names — DALL-E 3 blocks them) ──
+function buildAvatarPrompt(era, tags = [], ftPct = 75) {
+  const eraLabel =
+    era === 'nextgen' ? 'young contemporary NBA star' :
+    era === 'modern'  ? 'current-era NBA star' :
+                        'classic NBA legend';
+
+  // Use ftPct as a proxy for build/position
+  const build =
+    ftPct < 60 ? 'towering shot-blocking center, massive powerful frame' :
+    ftPct < 68 ? 'dominant power forward, big muscular build' :
+    ftPct < 78 ? 'versatile athletic forward' :
+    ftPct < 87 ? 'skilled shooting guard or small forward' :
+                 'sharp-shooting point guard, lean athletic frame';
+
+  const decade = (tags || []).find((t) => ['60s','70s','80s','90s','2000s'].includes(t));
+  const decadeHint = decade ? `, wearing ${decade} NBA-era uniform` : '';
+
+  const nationality = (tags || []).includes('french') ? ', French player' :
+                      (tags || []).includes('european') ? ', European player' :
+                      (tags || []).includes('international') ? ', international player' : '';
+
+  return `NBA Jam style cartoon portrait of a ${eraLabel}, ${build}${decadeHint}${nationality}. Bold vibrant colors, retro arcade game art style, upper body only, dynamic expressive pose, stylized and fun. No text, no watermark.`;
+}
+
 // ── DALL-E 3 avatar generation ───────────────────────────────────────────────
 app.post('/api/generate-avatar', async (req, res) => {
-  const { playerName } = req.body;
+  const { playerName, era, tags, ftPct } = req.body;
 
   if (!playerName || typeof playerName !== 'string') {
     return res.status(400).json({ error: 'playerName is required' });
@@ -137,9 +162,11 @@ app.post('/api/generate-avatar', async (req, res) => {
   try {
     const openai = new OpenAI({ apiKey });
 
+    const prompt = buildAvatarPrompt(era, tags, ftPct);
+
     const response = await openai.images.generate({
       model: 'dall-e-3',
-      prompt: `NBA Jam style cartoon avatar of ${playerName.trim()}, bold colors, retro arcade game art, upper body only, stylized and fun, no text`,
+      prompt,
       n: 1,
       size: '1024x1024',
       response_format: 'b64_json',
