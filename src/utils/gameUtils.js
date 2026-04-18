@@ -21,16 +21,14 @@ export function getDifficulty(id) {
 }
 
 /**
- * Bar oscillation period in ms. Bad shooters get faster bars.
- * speedMult < 1 = faster (harder).
+ * Bar oscillation period in ms. Scales with difficulty only — not with ftPct.
+ * Zone size already differentiates players; double-penalising bad shooters
+ * with a faster bar on top of a smaller zone is unfair.
  * Floor of 450ms keeps Legend playable on mobile.
  */
-export function getBarPeriodMs(ftPct, speedMult = 1.0) {
-  const minPeriod = 650;
-  const maxPeriod = 2200;
-  const t = Math.min(1, Math.max(0, (ftPct - 50) / 45));
-  const raw = (minPeriod + t * (maxPeriod - minPeriod)) * speedMult;
-  return Math.round(Math.max(raw, 450));
+export function getBarPeriodMs(speedMult = 1.0) {
+  const basePeriod = 1400;
+  return Math.round(Math.max(basePeriod * speedMult, 450));
 }
 
 /**
@@ -76,11 +74,10 @@ export function getBarPosition(elapsedMs, periodMs) {
  * Free-throw shot result from H and V stop positions.
  *
  * Layer 2 — Random variance (applyVariance = true for human shots only):
- *   Perfect hit: miss with probability (1 − ftPct/100)
+ *   Perfect hit: always goes in — rewarding a clean hit is non-negotiable
  *   Good hit:    miss with probability min(0.94, (1 − ftPct/100) × 2)
  *   Zone miss:   always miss
  *
- * This means even Curry misses ~9% of perfect shots; LeBron misses ~27%.
  * CPU shots use applyVariance=false so their accuracy stays calibrated.
  *
  * Returns:
@@ -102,13 +99,11 @@ export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0, applyVa
   let madeShot;
   if (aimZone === 'miss') {
     madeShot = false;
-  } else if (applyVariance) {
+  } else if (applyVariance && aimZone === 'good') {
     const missChance = 1 - ftPct / 100;
-    madeShot = aimZone === 'perfect'
-      ? Math.random() >= missChance
-      : Math.random() >= Math.min(0.94, missChance * 2);
+    madeShot = Math.random() >= Math.min(0.94, missChance * 2);
   } else {
-    madeShot = true;
+    madeShot = true; // perfect always goes in; CPU shots always go in
   }
 
   return {
@@ -145,11 +140,9 @@ export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0, s
   let madeShot;
   if (aimZone === 'miss') {
     madeShot = false;
-  } else if (applyVariance) {
+  } else if (applyVariance && aimZone === 'good') {
     const missChance = 1 - shotPct / 100;
-    madeShot = aimZone === 'perfect'
-      ? Math.random() >= missChance
-      : Math.random() >= Math.min(0.94, missChance * 2);
+    madeShot = Math.random() >= Math.min(0.94, missChance * 2);
   } else {
     madeShot = true;
   }

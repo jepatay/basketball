@@ -23,7 +23,7 @@ const TimingBar = forwardRef(function TimingBar(
   const positionRef  = useRef(50);
   const [displayPos, setDisplayPos] = useState(50);
 
-  const periodMs = getBarPeriodMs(ftPct, speedMult);
+  const periodMs = getBarPeriodMs(speedMult);
   const { makeRadius, perfectRadius } = getZoneRadii(ftPct, zoneMult);
 
   // ── Animation loop ──────────────────────────────────────────────────────
