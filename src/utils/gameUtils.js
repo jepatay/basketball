@@ -72,9 +72,11 @@ export function getBarPosition(elapsedMs, periodMs) {
  *
  * Layer 2 — Random variance (applyVariance = true for human shots only):
  *   Perfect hit: always goes in
- *   Good hit:    miss with probability (1 − ftPct/100)
- *                → make rate in good zone exactly equals career FT%
- *                   (Shaq 52%, LeBron 73%, Jordan 84%, Curry 91%)
+ *   Good hit:    miss chance scales linearly with distance from perfect zone:
+ *                  t = 0 (just outside gold) → 0% rimout
+ *                  t = 1 (outer edge of green) → (1 − ftPct/100)% rimout
+ *                A shot barely outside perfect almost never rims out;
+ *                only shots near the outer edge carry real miss risk.
  *   Zone miss:   always miss
  *
  * CPU shots use applyVariance=false so their accuracy stays calibrated.
@@ -99,7 +101,11 @@ export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0, applyVa
   if (aimZone === 'miss') {
     madeShot = false;
   } else if (applyVariance && aimZone === 'good') {
-    madeShot = Math.random() >= (1 - ftPct / 100);
+    // t = 0 at perfect-zone boundary, 1 at make-zone boundary
+    const deviation = Math.max(hDev, vDev);
+    const t = (deviation - perfectRadius) / Math.max(1, makeRadius - perfectRadius);
+    const missChance = (1 - ftPct / 100) * t;
+    madeShot = Math.random() >= missChance;
   } else {
     madeShot = true; // perfect always goes in; CPU shots always go in
   }
@@ -139,7 +145,12 @@ export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0, s
   if (aimZone === 'miss') {
     madeShot = false;
   } else if (applyVariance && aimZone === 'good') {
-    madeShot = Math.random() >= (1 - shotPct / 100);
+    const hT = hDev > perfectHV ? (hDev - perfectHV) / Math.max(1, makeHV - perfectHV) : 0;
+    const vT = vDev > perfectHV ? (vDev - perfectHV) / Math.max(1, makeHV - perfectHV) : 0;
+    const rT = rDev > perfectR  ? (rDev - perfectR)  / Math.max(1, makeR  - perfectR)  : 0;
+    const t = Math.max(hT, vT, rT); // furthest from perfect in any dimension
+    const missChance = (1 - shotPct / 100) * t;
+    madeShot = Math.random() >= missChance;
   } else {
     madeShot = true;
   }
