@@ -10,10 +10,10 @@
  * cpuSpread: extra sigma spread for CPU shots (1.0 = realistic; >1 = CPU misses more)
  */
 export const DIFFICULTIES = [
-  { id: 'rookie',  label: 'Rookie',   speedMult: 1.0,   zoneMult: 1.0,  cpuSpread: 0.85 },
-  { id: 'pro',     label: 'Pro',       speedMult: 0.6,   zoneMult: 0.75, cpuSpread: 1.0  },
-  { id: 'allstar', label: 'All-Star',  speedMult: 0.36,  zoneMult: 0.60, cpuSpread: 1.15 },
-  { id: 'legend',  label: 'Legend',    speedMult: 0.216, zoneMult: 0.40, cpuSpread: 1.30 },
+  { id: 'rookie',  label: 'Rookie',   speedMult: 1.0,          zoneMult: 1.0,  cpuSpread: 0.85 },
+  { id: 'pro',     label: 'Pro',       speedMult: 1000 / 1400,  zoneMult: 0.75, cpuSpread: 1.0  },
+  { id: 'allstar', label: 'All-Star',  speedMult: 800  / 1400,  zoneMult: 0.60, cpuSpread: 1.15 },
+  { id: 'legend',  label: 'Legend',    speedMult: 600  / 1400,  zoneMult: 0.40, cpuSpread: 1.30 },
 ];
 
 export function getDifficulty(id) {
@@ -34,21 +34,18 @@ export function getBarPeriodMs(speedMult = 1.0) {
 /**
  * Zone radii on 0–100 bar scale (center = 50).
  *
- * Layer 1 — Exponential zone sizing:
- *   makeRadius = 22 * (ftPct/100)³ * zoneMult
+ * Layer 1 — Zone sizing (power 1.5 — balanced curve):
+ *   makeRadius = 22 * (ftPct/100)^1.5 * zoneMult
  *
- * This creates a dramatic exponential difference between players:
- *   Curry  91%: ~16.6  (window ~330 ms at Rookie)
- *   Jordan 84%: ~13.1
- *   LeBron 73%: ~8.6   (window ~170 ms at Rookie)
- *   Shaq   52%: ~3.1   (window ~62 ms at Rookie)
- *
- * A player at 91% has ~2× the zone of a player at 73% (3× the area).
+ * Curry/Shaq ratio is ~2.3× (not 5× with cubic) so bad shooters are
+ * still hard but not impossible. Rookie zone widths (per bar):
+ *   Curry  91%: 38.2%   Jordan 84%: 33.8%
+ *   LeBron 73%: 27.4%   Shaq   52%: 16.5%
  */
 export function getZoneRadii(ftPct, zoneMult = 1.0) {
   const p = Math.min(1, Math.max(0, ftPct / 100));
-  const makeRadius    = 22 * Math.pow(p, 3) * zoneMult;
-  const perfectRadius = Math.max(1.5, 7 * Math.pow(p, 3) * zoneMult);
+  const makeRadius    = 22 * Math.pow(p, 1.5) * zoneMult;
+  const perfectRadius = Math.max(2, 7 * Math.pow(p, 1.5) * zoneMult);
   return { makeRadius, perfectRadius };
 }
 
@@ -74,8 +71,10 @@ export function getBarPosition(elapsedMs, periodMs) {
  * Free-throw shot result from H and V stop positions.
  *
  * Layer 2 — Random variance (applyVariance = true for human shots only):
- *   Perfect hit: always goes in — rewarding a clean hit is non-negotiable
- *   Good hit:    miss with probability min(0.94, (1 − ftPct/100) × 2)
+ *   Perfect hit: always goes in
+ *   Good hit:    miss with probability (1 − ftPct/100)
+ *                → make rate in good zone exactly equals career FT%
+ *                   (Shaq 52%, LeBron 73%, Jordan 84%, Curry 91%)
  *   Zone miss:   always miss
  *
  * CPU shots use applyVariance=false so their accuracy stays calibrated.
@@ -100,8 +99,7 @@ export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0, applyVa
   if (aimZone === 'miss') {
     madeShot = false;
   } else if (applyVariance && aimZone === 'good') {
-    const missChance = 1 - ftPct / 100;
-    madeShot = Math.random() >= Math.min(0.94, missChance * 2);
+    madeShot = Math.random() >= (1 - ftPct / 100);
   } else {
     madeShot = true; // perfect always goes in; CPU shots always go in
   }
@@ -141,8 +139,7 @@ export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0, s
   if (aimZone === 'miss') {
     madeShot = false;
   } else if (applyVariance && aimZone === 'good') {
-    const missChance = 1 - shotPct / 100;
-    madeShot = Math.random() >= Math.min(0.94, missChance * 2);
+    madeShot = Math.random() >= (1 - shotPct / 100);
   } else {
     madeShot = true;
   }
