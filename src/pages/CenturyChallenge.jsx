@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import PlayerSelect from '../components/players/PlayerSelect';
 import GameEngine from '../components/game/GameEngine';
 import AvatarDisplay from '../components/players/AvatarDisplay';
@@ -46,18 +46,26 @@ export default function CenturyChallenge() {
     setStep('playing');
   };
 
-  const handleComplete = async ({ scores }) => {
+  const handleComplete = async ({ scores, shotHistory }) => {
     const score = scores[0];
     const totalShots = 100;
 
-    setGameResult({ score, totalShots });
+    // Compute best/worst streak from shot history
+    const shots = shotHistory?.[0] || [];
+    let bestStreak = 0, worstStreak = 0, curMake = 0, curMiss = 0;
+    for (const s of shots) {
+      if (s.madeShot) { curMake++; curMiss = 0; if (curMake > bestStreak) bestStreak = curMake; }
+      else { curMiss++; curMake = 0; if (curMiss > worstStreak) worstStreak = curMiss; }
+    }
+
+    setGameResult({ score, totalShots, bestStreak, worstStreak });
     setStep('result');
 
-    // Save personal best and submit to leaderboard
+    const extras = { bestStreak, worstStreak };
     try {
-      const newBest = await savePersonalBest(username, selectedPlayer.id, score, totalShots);
+      const newBest = await savePersonalBest(username, selectedPlayer.id, score, totalShots, extras);
       setIsNewBest(newBest);
-      await submitToLeaderboard('century', username, selectedPlayer.id, score, totalShots);
+      await submitToLeaderboard('century', username, selectedPlayer.id, score, totalShots, extras);
     } catch {
       // ignore
     }
@@ -155,15 +163,30 @@ export default function CenturyChallenge() {
           </div>
           <div className="result-card__pct">{pct}% success rate</div>
 
+          <div className="result-card__streaks">
+            <div className="streak streak--best">
+              <span className="streak__label">🔥 Best streak</span>
+              <span className="streak__value">{gameResult.bestStreak}</span>
+            </div>
+            <div className="streak streak--worst">
+              <span className="streak__label">❄️ Worst streak</span>
+              <span className="streak__value">{gameResult.worstStreak}</span>
+            </div>
+          </div>
+
           {personalBest && !isNewBest && (
             <div className="result-card__pb">
               Personal Best: {personalBest.score}/100
+              {personalBest.bestStreak != null && ` · 🔥${personalBest.bestStreak}`}
             </div>
           )}
 
           {/* Leaderboard */}
           <div className="leaderboard">
-            <h3 className="leaderboard__title">🌍 Global Top 10</h3>
+            <div className="leaderboard__header">
+              <h3 className="leaderboard__title">🌍 Global Top 10</h3>
+              <Link to="/highscores" className="leaderboard__see-all">See all →</Link>
+            </div>
             {loadingLB ? (
               <div className="leaderboard__loading">Loading…</div>
             ) : (
@@ -174,6 +197,7 @@ export default function CenturyChallenge() {
                     <span className="leaderboard__user">{entry.username}</span>
                     <span className="leaderboard__player-name">{entry.playerId?.replace(/-/g, ' ')}</span>
                     <span className="leaderboard__lb-score">{entry.score}/100</span>
+                    {entry.bestStreak != null && <span className="leaderboard__streak">🔥{entry.bestStreak}</span>}
                   </li>
                 ))}
               </ol>

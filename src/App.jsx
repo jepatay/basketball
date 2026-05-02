@@ -5,6 +5,7 @@ import CenturyChallenge from './pages/CenturyChallenge';
 import QuickMatch from './pages/QuickMatch';
 import TeamPlayoff from './pages/TeamPlayoff';
 import Admin from './pages/Admin';
+import HighScores from './pages/HighScores';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/century" element={<CenturyChallenge />} />
         <Route path="/quickmatch" element={<QuickMatch />} />
         <Route path="/team-playoff" element={<TeamPlayoff />} />
+        <Route path="/highscores" element={<HighScores />} />
         <Route path="/admin" element={<Admin />} />
       </Routes>
     </BrowserRouter>

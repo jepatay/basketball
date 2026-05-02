@@ -101,9 +101,12 @@ export function calculateShotResult(hStop, vStop, ftPct, zoneMult = 1.0, applyVa
   if (aimZone === 'miss') {
     madeShot = false;
   } else if (applyVariance && aimZone === 'good') {
-    // t = 0 at perfect-zone boundary, 1 at make-zone boundary
-    const deviation = Math.max(hDev, vDev);
-    const t = (deviation - perfectRadius) / Math.max(1, makeRadius - perfectRadius);
+    // Per-cursor t: 0 = at perfect boundary, 1 = at make-zone edge
+    const tH = hDev > perfectRadius ? (hDev - perfectRadius) / Math.max(1, makeRadius - perfectRadius) : 0;
+    const tV = vDev > perfectRadius ? (vDev - perfectRadius) / Math.max(1, makeRadius - perfectRadius) : 0;
+    // Use MIN: both cursors must be at extremity for rimout to occur.
+    // If either cursor is perfect, t→0 and rimout is nearly impossible.
+    const t = Math.min(tH, tV);
     const missChance = (1 - ftPct / 100) * t;
     madeShot = Math.random() >= missChance;
   } else {
@@ -148,7 +151,7 @@ export function calculateThreePointResult(hStop, vStop, rStop, zoneMult = 1.0, s
     const hT = hDev > perfectHV ? (hDev - perfectHV) / Math.max(1, makeHV - perfectHV) : 0;
     const vT = vDev > perfectHV ? (vDev - perfectHV) / Math.max(1, makeHV - perfectHV) : 0;
     const rT = rDev > perfectR  ? (rDev - perfectR)  / Math.max(1, makeR  - perfectR)  : 0;
-    const t = Math.max(hT, vT, rT); // furthest from perfect in any dimension
+    const t = Math.min(hT, vT, rT); // all dimensions must be at extremity
     const missChance = (1 - shotPct / 100) * t;
     madeShot = Math.random() >= missChance;
   } else {

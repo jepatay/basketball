@@ -70,14 +70,17 @@ export default function Home() {
 
       {/* Footer links */}
       <div className="home__footer">
-        <button className="btn btn--ghost btn--sm" onClick={() => go('/admin')}>
-          ⚙ Admin
+        <button className="btn btn--ghost btn--sm" onClick={() => go('/highscores')}>
+          🏅 High Scores
         </button>
         <button
           className="btn btn--ghost btn--sm"
           onClick={() => setCourtIdx((i) => (i + 1) % COURTS.length)}
         >
           🏟 Change Court
+        </button>
+        <button className="btn btn--ghost btn--sm" onClick={() => go('/admin')}>
+          ⚙ Admin
         </button>
       </div>
     </div>

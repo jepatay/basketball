@@ -715,6 +715,29 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
 .leaderboard__user        { font-weight: 700; color: var(--white); flex: 1; }
 .leaderboard__player-name { font-size: 0.75rem; color: var(--grey); flex: 1; text-transform: capitalize; }
 .leaderboard__lb-score    { font-family: var(--font-display); color: var(--orange); font-size: 1rem; }
+.leaderboard__lb-total    { font-size: 0.7em; color: var(--grey); }
+.leaderboard__streak      { font-family: var(--font-display); color: var(--gold); font-size: 0.85rem; min-width: 36px; text-align: right; }
+.leaderboard__streak--cold { color: #7ec8e3; }
+.leaderboard__header      { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.leaderboard__see-all     { font-size: 0.8rem; color: var(--orange); padding: 10px 16px; text-decoration: none; }
+.leaderboard__entry--header { background: rgba(255,255,255,0.04); font-size: 0.72rem; color: var(--grey); text-transform: uppercase; letter-spacing: 0.08em; padding: 6px 16px; }
+.leaderboard__entry--gold   { background: rgba(255,215,0,0.08); }
+.leaderboard__entry--silver { background: rgba(192,192,192,0.06); }
+.leaderboard__entry--bronze { background: rgba(205,127,50,0.06); }
+.leaderboard__list--full    { width: 100%; }
+
+/* ── Streak display (result card) ──────────────────────────────────────────── */
+.result-card__streaks { display: flex; gap: 16px; justify-content: center; margin: 4px 0; }
+.streak { display: flex; flex-direction: column; align-items: center; gap: 2px; background: var(--dark-3); border-radius: var(--radius); padding: 8px 20px; }
+.streak__label { font-size: 0.75rem; color: var(--grey); }
+.streak__value { font-family: var(--font-display); font-size: 1.8rem; }
+.streak--best  .streak__value { color: var(--gold); }
+.streak--worst .streak__value { color: #7ec8e3; }
+
+/* ── High Scores page ────────────────────────────────────────────────────────*/
+.page--highscores { padding-bottom: 40px; }
+.highscores-card { max-width: 600px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.highscores-game-title { font-family: var(--font-display); font-size: 1rem; color: var(--gold); letter-spacing: 0.06em; text-align: center; }
 
 /* ── Century pick confirm ─────────────────────────────────────────────────── */
 .century-pick-confirm { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 20px; text-align: center; max-width: 400px; margin: 0 auto; }

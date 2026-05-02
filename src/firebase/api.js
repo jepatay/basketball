@@ -50,16 +50,14 @@ export async function addPlayer(playerId, playerData, base64Image) {
 
 // ── Scores / Personal Bests ──────────────────────────────────────────────────
 
-export async function savePersonalBest(username, playerId, score, totalShots) {
+export async function savePersonalBest(username, playerId, score, totalShots, extras = {}) {
   const path = `users/${username}/scores/${playerId}`;
   const existing = await getDoc(doc(db, path));
   const pct = Math.round((score / totalShots) * 100);
   if (!existing.exists() || existing.data().score < score) {
     await setDoc(doc(db, path), {
-      score,
-      totalShots,
-      pct,
-      playerId,
+      score, totalShots, pct, playerId,
+      ...extras,
       updatedAt: serverTimestamp(),
     });
     return true;
@@ -74,13 +72,11 @@ export async function getPersonalBest(username, playerId) {
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 
-export async function submitToLeaderboard(mode, username, playerId, score, totalShots) {
+export async function submitToLeaderboard(mode, username, playerId, score, totalShots, extras = {}) {
   const entry = {
-    username,
-    playerId,
-    score,
-    totalShots,
+    username, playerId, score, totalShots,
     pct: Math.round((score / totalShots) * 100),
+    ...extras,
     submittedAt: serverTimestamp(),
   };
   const entryId = `${username}_${playerId}_${Date.now()}`;
