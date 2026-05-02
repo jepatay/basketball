@@ -50,13 +50,14 @@ export async function addPlayer(playerId, playerData, base64Image) {
 
 // ── Scores / Personal Bests ──────────────────────────────────────────────────
 
-export async function savePersonalBest(username, playerId, score, totalShots, extras = {}) {
-  const path = `users/${username}/scores/${playerId}`;
+export async function savePersonalBest(username, playerId, score, totalShots, extras = {}, difficulty = 'pro') {
+  const docId = `${playerId}_${difficulty}`;
+  const path = `users/${username}/scores/${docId}`;
   const existing = await getDoc(doc(db, path));
   const pct = Math.round((score / totalShots) * 100);
   if (!existing.exists() || existing.data().score < score) {
     await setDoc(doc(db, path), {
-      score, totalShots, pct, playerId,
+      score, totalShots, pct, playerId, difficulty,
       ...extras,
       updatedAt: serverTimestamp(),
     });
@@ -65,27 +66,31 @@ export async function savePersonalBest(username, playerId, score, totalShots, ex
   return false;
 }
 
-export async function getPersonalBest(username, playerId) {
-  const snap = await getDoc(doc(db, `users/${username}/scores/${playerId}`));
+export async function getPersonalBest(username, playerId, difficulty = 'pro') {
+  const snap = await getDoc(doc(db, `users/${username}/scores/${playerId}_${difficulty}`));
   return snap.exists() ? snap.data() : null;
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
+// Path: leaderboard/{mode}_{difficulty}/entries/{entryId}
+// Using nested subcollection so paths always have even (doc) or odd (col) segments.
 
-export async function submitToLeaderboard(mode, username, playerId, score, totalShots, extras = {}) {
+export async function submitToLeaderboard(mode, username, playerId, score, totalShots, extras = {}, difficulty = 'pro') {
+  const modeKey = `${mode}_${difficulty}`;
   const entry = {
-    username, playerId, score, totalShots,
+    username, playerId, score, totalShots, difficulty,
     pct: Math.round((score / totalShots) * 100),
     ...extras,
     submittedAt: serverTimestamp(),
   };
   const entryId = `${username}_${playerId}_${Date.now()}`;
-  await setDoc(doc(db, `leaderboard/${mode}/${entryId}`), entry);
+  await setDoc(doc(db, 'leaderboard', modeKey, 'entries', entryId), entry);
 }
 
-export async function getLeaderboard(mode, limitCount = 20) {
+export async function getLeaderboard(mode, limitCount = 20, difficulty = 'pro') {
+  const modeKey = `${mode}_${difficulty}`;
   const q = query(
-    collection(db, `leaderboard/${mode}`),
+    collection(db, 'leaderboard', modeKey, 'entries'),
     orderBy('score', 'desc'),
     limit(limitCount)
   );

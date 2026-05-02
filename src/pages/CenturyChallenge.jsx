@@ -32,12 +32,23 @@ export default function CenturyChallenge() {
 
   const handlePlayerSelect = async (player) => {
     setSelectedPlayer(player);
-    // Load personal best
     try {
-      const pb = await getPersonalBest(username, player.id);
+      const pb = await getPersonalBest(username, player.id, difficulty);
       setPersonalBest(pb);
     } catch {
       setPersonalBest(null);
+    }
+  };
+
+  const handleDifficultyChange = async (d) => {
+    setDifficulty(d);
+    if (selectedPlayer) {
+      try {
+        const pb = await getPersonalBest(username, selectedPlayer.id, d);
+        setPersonalBest(pb);
+      } catch {
+        setPersonalBest(null);
+      }
     }
   };
 
@@ -63,17 +74,17 @@ export default function CenturyChallenge() {
 
     const extras = { bestStreak, worstStreak };
     try {
-      const newBest = await savePersonalBest(username, selectedPlayer.id, score, totalShots, extras);
+      const newBest = await savePersonalBest(username, selectedPlayer.id, score, totalShots, extras, difficulty);
       setIsNewBest(newBest);
-      await submitToLeaderboard('century', username, selectedPlayer.id, score, totalShots, extras);
+      await submitToLeaderboard('century', username, selectedPlayer.id, score, totalShots, extras, difficulty);
     } catch {
       // ignore
     }
 
-    // Load leaderboard
+    // Load leaderboard for this difficulty
     setLoadingLB(true);
     try {
-      const lb = await getLeaderboard('century');
+      const lb = await getLeaderboard('century', 20, difficulty);
       setLeaderboard(lb);
     } catch {
       setLeaderboard([]);
@@ -107,7 +118,7 @@ export default function CenturyChallenge() {
                   <button
                     key={d.id}
                     className={`btn btn--option btn--difficulty ${difficulty === d.id ? 'btn--option-active' : ''}`}
-                    onClick={() => setDifficulty(d.id)}
+                    onClick={() => handleDifficultyChange(d.id)}
                   >{d.label}</button>
                 ))}
               </div>
@@ -184,7 +195,7 @@ export default function CenturyChallenge() {
           {/* Leaderboard */}
           <div className="leaderboard">
             <div className="leaderboard__header">
-              <h3 className="leaderboard__title">🌍 Global Top 10</h3>
+              <h3 className="leaderboard__title">🌍 Top 10 — {difficulty.charAt(0).toUpperCase() + difficulty.slice(1).replace('allstar','All-Star')}</h3>
               <Link to="/highscores" className="leaderboard__see-all">See all →</Link>
             </div>
             {loadingLB ? (

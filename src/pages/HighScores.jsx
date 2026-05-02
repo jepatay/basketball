@@ -1,18 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getLeaderboard } from '../firebase/api';
+import { DIFFICULTIES } from '../utils/gameUtils';
 
 export default function HighScores() {
   const navigate = useNavigate();
-  const [scores, setScores] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [activeDifficulty, setActiveDifficulty] = useState('pro');
+  const [scoresByDiff, setScoresByDiff] = useState({});
+  const [loading, setLoading] = useState({});
 
-  useEffect(() => {
-    getLeaderboard('century', 50)
-      .then(setScores)
-      .catch(() => setScores([]))
-      .finally(() => setLoading(false));
-  }, []);
+  const loadDifficulty = (diffId) => {
+    if (scoresByDiff[diffId] !== undefined) return; // already loaded
+    setLoading((prev) => ({ ...prev, [diffId]: true }));
+    getLeaderboard('century', 50, diffId)
+      .then((data) => setScoresByDiff((prev) => ({ ...prev, [diffId]: data })))
+      .catch(() => setScoresByDiff((prev) => ({ ...prev, [diffId]: [] })))
+      .finally(() => setLoading((prev) => ({ ...prev, [diffId]: false })));
+  };
+
+  useEffect(() => { loadDifficulty('pro'); }, []);
+
+  const handleTabClick = (diffId) => {
+    setActiveDifficulty(diffId);
+    loadDifficulty(diffId);
+  };
+
+  const scores = scoresByDiff[activeDifficulty];
+  const isLoading = loading[activeDifficulty];
 
   return (
     <div className="page page--highscores">
@@ -22,12 +36,25 @@ export default function HighScores() {
       </div>
 
       <div className="highscores-card">
-        <div className="highscores-game-title">🎯 Century Challenge — Global Leaderboard</div>
+        <div className="highscores-game-title">🎯 Century Challenge</div>
 
-        {loading ? (
+        {/* Difficulty tabs */}
+        <div className="highscores-tabs">
+          {DIFFICULTIES.map((d) => (
+            <button
+              key={d.id}
+              className={`highscores-tab ${activeDifficulty === d.id ? 'highscores-tab--active' : ''}`}
+              onClick={() => handleTabClick(d.id)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+
+        {isLoading ? (
           <div className="leaderboard__loading">Loading…</div>
-        ) : scores.length === 0 ? (
-          <div className="leaderboard__loading">No scores yet — be the first!</div>
+        ) : !scores || scores.length === 0 ? (
+          <div className="leaderboard__loading">No scores yet for this difficulty — be the first!</div>
         ) : (
           <ol className="leaderboard__list leaderboard__list--full">
             <li className="leaderboard__entry leaderboard__entry--header">
@@ -35,8 +62,8 @@ export default function HighScores() {
               <span className="leaderboard__user">Player</span>
               <span className="leaderboard__player-name">Character</span>
               <span className="leaderboard__lb-score">Score</span>
-              <span className="leaderboard__streak">🔥 Best</span>
-              <span className="leaderboard__streak leaderboard__streak--cold">❄️ Worst</span>
+              <span className="leaderboard__streak">🔥</span>
+              <span className="leaderboard__streak leaderboard__streak--cold">❄️</span>
             </li>
             {scores.map((entry, i) => (
               <li
@@ -48,7 +75,9 @@ export default function HighScores() {
                 </span>
                 <span className="leaderboard__user">{entry.username}</span>
                 <span className="leaderboard__player-name">{entry.playerId?.replace(/-/g, ' ')}</span>
-                <span className="leaderboard__lb-score">{entry.score}<span className="leaderboard__lb-total">/100</span></span>
+                <span className="leaderboard__lb-score">
+                  {entry.score}<span className="leaderboard__lb-total">/100</span>
+                </span>
                 <span className="leaderboard__streak">{entry.bestStreak ?? '—'}</span>
                 <span className="leaderboard__streak leaderboard__streak--cold">{entry.worstStreak ?? '—'}</span>
               </li>
