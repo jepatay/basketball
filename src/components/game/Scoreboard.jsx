@@ -30,6 +30,16 @@ export default function Scoreboard({ players, scores, shotHistory, currentShotNu
           <>
             <div className="scoreboard__shot-num">{currentShotNum}</div>
             <div className="scoreboard__shot-of">of {totalShots}</div>
+            {players.length === 1 && (() => {
+              const made = scores[0] ?? 0;
+              const taken = shotHistory?.[0]?.length ?? 0;
+              const remaining = totalShots - taken;
+              const maxScore = made + remaining;
+              const maxPct = Math.round(maxScore / totalShots * 100);
+              return remaining > 0 && remaining < totalShots ? (
+                <div className="scoreboard__max">max {maxPct}%</div>
+              ) : null;
+            })()}
           </>
         )}
       </div>

@@ -620,6 +620,7 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
 .scoreboard__center       { text-align: center; flex: 1; }
 .scoreboard__shot-num     { font-family: var(--font-display); font-size: 1.4rem; color: var(--orange); line-height: 1; }
 .scoreboard__shot-of      { font-size: 0.75rem; color: var(--grey); }
+.scoreboard__max          { font-size: 0.68rem; color: var(--teal); opacity: 0.8; margin-top: 2px; }
 .scoreboard__sd           { font-family: var(--font-display); font-size: 1.1rem; color: var(--gold); animation: cta-pulse 0.8s infinite; }
 
 /* ── Shot result overlay ──────────────────────────────────────────────────── */
@@ -716,6 +717,8 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
 .leaderboard__player-name { font-size: 0.75rem; color: var(--grey); flex: 1; text-transform: capitalize; }
 .leaderboard__lb-score    { font-family: var(--font-display); color: var(--orange); font-size: 1rem; }
 .leaderboard__lb-total    { font-size: 0.7em; color: var(--grey); }
+.leaderboard__date        { font-size: 0.7rem; color: var(--grey); white-space: nowrap; }
+.leaderboard__entry--rich { flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
 .leaderboard__streak      { font-family: var(--font-display); color: var(--gold); font-size: 0.85rem; min-width: 36px; text-align: right; }
 .leaderboard__streak--cold { color: #7ec8e3; }
 .leaderboard__header      { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); }

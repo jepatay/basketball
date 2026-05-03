@@ -3,18 +3,45 @@ import { useNavigate } from 'react-router-dom';
 import { getLeaderboard } from '../firebase/api';
 import { DIFFICULTIES } from '../utils/gameUtils';
 
+function formatDate(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts.seconds ? ts.seconds * 1000 : ts);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function LeaderboardRow({ entry, rank }) {
+  return (
+    <li className={`leaderboard__entry leaderboard__entry--rich`}>
+      <span className="leaderboard__rank">{rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}</span>
+      <span className="leaderboard__lb-score">{entry.score}<span className="leaderboard__lb-total">/100</span></span>
+      <span className="leaderboard__streak">🔥{entry.bestStreak ?? '—'} ❄️{entry.worstStreak ?? '—'}</span>
+      <span className="leaderboard__date">{formatDate(entry.submittedAt)}</span>
+      <span className="leaderboard__user">{entry.username}</span>
+      <span className="leaderboard__player-name">{entry.playerId?.replace(/-/g, ' ')}</span>
+    </li>
+  );
+}
+
 export default function HighScores() {
   const navigate = useNavigate();
   const [activeDifficulty, setActiveDifficulty] = useState('pro');
   const [scoresByDiff, setScoresByDiff] = useState({});
   const [loading, setLoading] = useState({});
+  const [errors, setErrors] = useState({});
 
   const loadDifficulty = (diffId) => {
-    if (scoresByDiff[diffId] !== undefined) return; // already loaded
+    if (scoresByDiff[diffId] !== undefined) return;
     setLoading((prev) => ({ ...prev, [diffId]: true }));
     getLeaderboard('century', 50, diffId)
-      .then((data) => setScoresByDiff((prev) => ({ ...prev, [diffId]: data })))
-      .catch(() => setScoresByDiff((prev) => ({ ...prev, [diffId]: [] })))
+      .then((data) => {
+        setScoresByDiff((prev) => ({ ...prev, [diffId]: data }));
+        setErrors((prev) => ({ ...prev, [diffId]: null }));
+      })
+      .catch((err) => {
+        console.error('getLeaderboard error:', err);
+        setScoresByDiff((prev) => ({ ...prev, [diffId]: [] }));
+        setErrors((prev) => ({ ...prev, [diffId]: err?.message || 'Load failed' }));
+      })
       .finally(() => setLoading((prev) => ({ ...prev, [diffId]: false })));
   };
 
@@ -27,6 +54,7 @@ export default function HighScores() {
 
   const scores = scoresByDiff[activeDifficulty];
   const isLoading = loading[activeDifficulty];
+  const errorMsg = errors[activeDifficulty];
 
   return (
     <div className="page page--highscores">
@@ -38,7 +66,6 @@ export default function HighScores() {
       <div className="highscores-card">
         <div className="highscores-game-title">🎯 Century Challenge</div>
 
-        {/* Difficulty tabs */}
         <div className="highscores-tabs">
           {DIFFICULTIES.map((d) => (
             <button
@@ -53,34 +80,14 @@ export default function HighScores() {
 
         {isLoading ? (
           <div className="leaderboard__loading">Loading…</div>
+        ) : errorMsg ? (
+          <div className="leaderboard__loading" style={{ color: '#ff6b6b' }}>Error: {errorMsg}</div>
         ) : !scores || scores.length === 0 ? (
           <div className="leaderboard__loading">No scores yet for this difficulty — be the first!</div>
         ) : (
           <ol className="leaderboard__list leaderboard__list--full">
-            <li className="leaderboard__entry leaderboard__entry--header">
-              <span className="leaderboard__rank">#</span>
-              <span className="leaderboard__user">Player</span>
-              <span className="leaderboard__player-name">Character</span>
-              <span className="leaderboard__lb-score">Score</span>
-              <span className="leaderboard__streak">🔥</span>
-              <span className="leaderboard__streak leaderboard__streak--cold">❄️</span>
-            </li>
             {scores.map((entry, i) => (
-              <li
-                key={entry.id}
-                className={`leaderboard__entry ${i === 0 ? 'leaderboard__entry--gold' : i === 1 ? 'leaderboard__entry--silver' : i === 2 ? 'leaderboard__entry--bronze' : ''}`}
-              >
-                <span className="leaderboard__rank">
-                  {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
-                </span>
-                <span className="leaderboard__user">{entry.username}</span>
-                <span className="leaderboard__player-name">{entry.playerId?.replace(/-/g, ' ')}</span>
-                <span className="leaderboard__lb-score">
-                  {entry.score}<span className="leaderboard__lb-total">/100</span>
-                </span>
-                <span className="leaderboard__streak">{entry.bestStreak ?? '—'}</span>
-                <span className="leaderboard__streak leaderboard__streak--cold">{entry.worstStreak ?? '—'}</span>
-              </li>
+              <LeaderboardRow key={entry.id} entry={entry} rank={i + 1} />
             ))}
           </ol>
         )}

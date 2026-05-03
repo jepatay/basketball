@@ -72,25 +72,24 @@ export async function getPersonalBest(username, playerId, difficulty = 'pro') {
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
-// Path: leaderboard/{mode}_{difficulty}/entries/{entryId}
-// Using nested subcollection so paths always have even (doc) or odd (col) segments.
+// One top-level collection per mode+difficulty: lb_century_pro, lb_century_legend, etc.
+// Flat 2-segment paths (collection/doc) are always valid in Firestore.
 
 export async function submitToLeaderboard(mode, username, playerId, score, totalShots, extras = {}, difficulty = 'pro') {
-  const modeKey = `${mode}_${difficulty}`;
-  const entry = {
+  const colName = `lb_${mode}_${difficulty}`;
+  const entryId = `${username}_${playerId}_${Date.now()}`;
+  await setDoc(doc(db, colName, entryId), {
     username, playerId, score, totalShots, difficulty,
     pct: Math.round((score / totalShots) * 100),
     ...extras,
     submittedAt: serverTimestamp(),
-  };
-  const entryId = `${username}_${playerId}_${Date.now()}`;
-  await setDoc(doc(db, 'leaderboard', modeKey, 'entries', entryId), entry);
+  });
 }
 
 export async function getLeaderboard(mode, limitCount = 20, difficulty = 'pro') {
-  const modeKey = `${mode}_${difficulty}`;
+  const colName = `lb_${mode}_${difficulty}`;
   const q = query(
-    collection(db, 'leaderboard', modeKey, 'entries'),
+    collection(db, colName),
     orderBy('score', 'desc'),
     limit(limitCount)
   );

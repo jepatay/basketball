@@ -7,7 +7,24 @@ import { loadPlayers, seedPlayersIfNeeded, savePersonalBest, getPersonalBest, su
 import { DIFFICULTIES } from '../utils/gameUtils';
 import PLAYERS from '../data/players';
 
-const STEPS = ['pick', 'playing', 'result'];
+function formatDate(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts.seconds ? ts.seconds * 1000 : ts);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function LeaderboardRow({ entry, rank, isYou }) {
+  return (
+    <li className={`leaderboard__entry leaderboard__entry--rich ${isYou ? 'leaderboard__entry--you' : ''}`}>
+      <span className="leaderboard__rank">{rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}</span>
+      <span className="leaderboard__lb-score">{entry.score}<span className="leaderboard__lb-total">/100</span></span>
+      <span className="leaderboard__streak">🔥{entry.bestStreak ?? '—'} ❄️{entry.worstStreak ?? '—'}</span>
+      <span className="leaderboard__date">{formatDate(entry.submittedAt)}</span>
+      <span className="leaderboard__user">{entry.username}</span>
+      <span className="leaderboard__player-name">{entry.playerId?.replace(/-/g, ' ')}</span>
+    </li>
+  );
+}
 
 export default function CenturyChallenge() {
   const navigate = useNavigate();
@@ -76,9 +93,13 @@ export default function CenturyChallenge() {
     try {
       const newBest = await savePersonalBest(username, selectedPlayer.id, score, totalShots, extras, difficulty);
       setIsNewBest(newBest);
+    } catch (err) {
+      console.error('savePersonalBest failed:', err);
+    }
+    try {
       await submitToLeaderboard('century', username, selectedPlayer.id, score, totalShots, extras, difficulty);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('submitToLeaderboard failed:', err);
     }
 
     // Load leaderboard for this difficulty
@@ -86,7 +107,8 @@ export default function CenturyChallenge() {
     try {
       const lb = await getLeaderboard('century', 20, difficulty);
       setLeaderboard(lb);
-    } catch {
+    } catch (err) {
+      console.error('getLeaderboard failed:', err);
       setLeaderboard([]);
     } finally {
       setLoadingLB(false);
@@ -203,13 +225,7 @@ export default function CenturyChallenge() {
             ) : (
               <ol className="leaderboard__list">
                 {leaderboard.slice(0, 10).map((entry, i) => (
-                  <li key={entry.id} className={`leaderboard__entry ${entry.username === username && entry.score === gameResult.score ? 'leaderboard__entry--you' : ''}`}>
-                    <span className="leaderboard__rank">#{i + 1}</span>
-                    <span className="leaderboard__user">{entry.username}</span>
-                    <span className="leaderboard__player-name">{entry.playerId?.replace(/-/g, ' ')}</span>
-                    <span className="leaderboard__lb-score">{entry.score}/100</span>
-                    {entry.bestStreak != null && <span className="leaderboard__streak">🔥{entry.bestStreak}</span>}
-                  </li>
+                  <LeaderboardRow key={entry.id} entry={entry} rank={i + 1} isYou={entry.username === username && entry.score === gameResult.score} />
                 ))}
               </ol>
             )}
