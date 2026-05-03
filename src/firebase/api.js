@@ -6,6 +6,7 @@ import {
   setDoc,
   updateDoc,
   query,
+  where,
   orderBy,
   limit,
   serverTimestamp,
@@ -72,14 +73,15 @@ export async function getPersonalBest(username, playerId, difficulty = 'pro') {
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
-// One top-level collection per mode+difficulty: lb_century_pro, lb_century_legend, etc.
-// Flat 2-segment paths (collection/doc) are always valid in Firestore.
+// Single top-level 'leaderboard' collection. Each document has a 'modeKey'
+// field (e.g. 'century_pro') used as a filter. 2-segment paths are always valid.
+// Firestore rules must allow read/write on the 'leaderboard' collection.
 
 export async function submitToLeaderboard(mode, username, playerId, score, totalShots, extras = {}, difficulty = 'pro') {
-  const colName = `lb_${mode}_${difficulty}`;
-  const entryId = `${username}_${playerId}_${Date.now()}`;
-  await setDoc(doc(db, colName, entryId), {
-    username, playerId, score, totalShots, difficulty,
+  const modeKey = `${mode}_${difficulty}`;
+  const entryId = `${modeKey}_${username}_${Date.now()}`;
+  await setDoc(doc(db, 'leaderboard', entryId), {
+    modeKey, username, playerId, score, totalShots, difficulty,
     pct: Math.round((score / totalShots) * 100),
     ...extras,
     submittedAt: serverTimestamp(),
@@ -87,14 +89,16 @@ export async function submitToLeaderboard(mode, username, playerId, score, total
 }
 
 export async function getLeaderboard(mode, limitCount = 20, difficulty = 'pro') {
-  const colName = `lb_${mode}_${difficulty}`;
+  const modeKey = `${mode}_${difficulty}`;
+  // Single-field where() needs no composite index; sort client-side.
   const q = query(
-    collection(db, colName),
-    orderBy('score', 'desc'),
-    limit(limitCount)
+    collection(db, 'leaderboard'),
+    where('modeKey', '==', modeKey),
+    limit(500)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return docs.sort((a, b) => b.score - a.score).slice(0, limitCount);
 }
 
 // ── Tournaments ───────────────────────────────────────────────────────────────
