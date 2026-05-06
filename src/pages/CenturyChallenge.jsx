@@ -200,7 +200,7 @@ export default function CenturyChallenge() {
 
           <div className="result-card__streaks">
             <div className="streak streak--best">
-              <span className="streak__label">🔥 Best streak</span>
+              <span className="streak__label">⭐ Best streak</span>
               <span className="streak__value">{gameResult.bestStreak}</span>
             </div>
             <div className="streak streak--worst">
@@ -208,7 +208,7 @@ export default function CenturyChallenge() {
               <span className="streak__value">{gameResult.worstStreak}</span>
             </div>
             <div className="streak streak--perfect">
-              <span className="streak__label">⭐ Perfect shots</span>
+              <span className="streak__label">🔥 Perfect shots</span>
               <span className="streak__value">{gameResult.perfectShots}</span>
             </div>
           </div>
