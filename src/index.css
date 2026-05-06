@@ -734,8 +734,9 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.04em; }
 .streak { display: flex; flex-direction: column; align-items: center; gap: 2px; background: var(--dark-3); border-radius: var(--radius); padding: 8px 20px; }
 .streak__label { font-size: 0.75rem; color: var(--grey); }
 .streak__value { font-family: var(--font-display); font-size: 1.8rem; }
-.streak--best  .streak__value { color: var(--gold); }
-.streak--worst .streak__value { color: #7ec8e3; }
+.streak--best    .streak__value { color: var(--gold); }
+.streak--worst   .streak__value { color: #7ec8e3; }
+.streak--perfect .streak__value { color: #c084fc; }
 
 /* ── High Scores page ────────────────────────────────────────────────────────*/
 .page--highscores { padding-bottom: 40px; }

@@ -78,18 +78,20 @@ export default function CenturyChallenge() {
     const score = scores[0];
     const totalShots = 100;
 
-    // Compute best/worst streak from shot history
+    // Compute best/worst streak and perfect shot count from shot history
     const shots = shotHistory?.[0] || [];
     let bestStreak = 0, worstStreak = 0, curMake = 0, curMiss = 0;
+    let perfectShots = 0;
     for (const s of shots) {
+      if (s.result === 'perfect') perfectShots++;
       if (s.madeShot) { curMake++; curMiss = 0; if (curMake > bestStreak) bestStreak = curMake; }
       else { curMiss++; curMake = 0; if (curMiss > worstStreak) worstStreak = curMiss; }
     }
 
-    setGameResult({ score, totalShots, bestStreak, worstStreak });
+    setGameResult({ score, totalShots, bestStreak, worstStreak, perfectShots });
     setStep('result');
 
-    const extras = { bestStreak, worstStreak };
+    const extras = { bestStreak, worstStreak, perfectShots };
     try {
       const newBest = await savePersonalBest(username, selectedPlayer.id, score, totalShots, extras, difficulty);
       setIsNewBest(newBest);
@@ -204,6 +206,10 @@ export default function CenturyChallenge() {
             <div className="streak streak--worst">
               <span className="streak__label">❄️ Worst streak</span>
               <span className="streak__value">{gameResult.worstStreak}</span>
+            </div>
+            <div className="streak streak--perfect">
+              <span className="streak__label">⭐ Perfect shots</span>
+              <span className="streak__value">{gameResult.perfectShots}</span>
             </div>
           </div>
 
